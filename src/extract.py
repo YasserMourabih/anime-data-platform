@@ -40,11 +40,10 @@ if response.status_code == 200:
     anime_list = data['data']['Page']['media']
     print(f"✅ Success! Here are {len(anime_list)} anime :\n")
     # Sometimes the English title is missing (None), so we use the romaji by default.
-    for anime in anime_list:
+    for anime in anime_list:    
         titre = anime['title']['english'] or anime['title']['romaji']
         score = anime['averageScore']
         print(f"- {titre} (Score moyen : {score}/100)")
-        
 else:
     print(f"❌ Erreur lors de la requête : {response.status_code}")
     print(response.text)

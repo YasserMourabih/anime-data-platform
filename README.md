@@ -1,1 +1,1 @@
-# anime-data-platform
+# Anime Data Platform
