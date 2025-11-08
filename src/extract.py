@@ -21,7 +21,7 @@ if not all([DB_HOST, DB_NAME, DB_USER, DB_PASS, API_URL]):
     raise EnvironmentError("❌ Missing environment variables. Check your .env file")
 
 # --- 1. EXTRACTION ---
-query = '''
+QUERY = '''
 query ($page: Int, $perPage: Int) {
   Page (page: $page, perPage: $perPage) {
     media (type: ANIME, sort: POPULARITY_DESC) {
@@ -35,14 +35,14 @@ query ($page: Int, $perPage: Int) {
   }
 }
 '''
-variables = {
+VARIABLES = {
     'page': 1, 
     'perPage': 10
     }
 
 print("📡 Calling the AniList API...")
 try:
-    response = requests.post(API_URL, json={'query': query, 'variables': variables}, timeout=10)
+    response = requests.post(API_URL, json={'query': QUERY, 'variables': VARIABLES}, timeout=10)
     response.raise_for_status() # Raise an exception if the status is not 200
     data = response.json()['data']['Page']['media']
     print(f"✅ {len(data)} animes retrieved.")
@@ -79,7 +79,7 @@ try:
     print("✅ JSON data inserted successfully!")
 
     # Check
-    cur.execute("SELECT COUNT(*) FROM raw_anilist;")
+    cur.execute("SELECT COUNT(*) FROM raw_anilist_json;")
     print(f"📊 Total number of animes in database: {cur.fetchone()[0]}")
 
     cur.close()
