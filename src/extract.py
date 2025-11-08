@@ -1,7 +1,8 @@
 import os
+import json
 import requests
 import psycopg2
-from psycopg2.extras import execute_values
+from psycopg2.extras import execute_values, Json
 from dotenv import load_dotenv
 
 # --- CONFIGURATION ---
@@ -49,14 +50,12 @@ except requests.exceptions.RequestException as e:
     print(f"❌ Error calling API: {e}")
     exit()
 
-# --- 2. TRANSFORMATION ---
+# --- 2. TRANSFORMATION (Minimal transformation: JSON wrapping) ---
 animes_to_insert = []
 for anime in data:
     animes_to_insert.append((
         anime['id'],
-        anime['title']['romaji'],
-        anime['title']['english'],
-        anime['averageScore']
+        Json(anime)
     ))
 
 # --- 3. LOADING ---
@@ -68,16 +67,16 @@ try:
     cur = conn.cursor()
 
     insert_query = """
-    INSERT INTO raw_anilist (anime_id, title_romaji, title_english, average_score)
+    INSERT INTO raw_anilist_json (anime_id, raw_data)
     VALUES %s
     ON CONFLICT (anime_id) DO UPDATE 
-    SET average_score = EXCLUDED.average_score,
+    SET raw_data = EXCLUDED.raw_data,
         fetched_at = CURRENT_TIMESTAMP;
     """
 
     execute_values(cur, insert_query, animes_to_insert)
     conn.commit()
-    print("✅ Data inserted successfully!")
+    print("✅ JSON data inserted successfully!")
 
     # Check
     cur.execute("SELECT COUNT(*) FROM raw_anilist;")
