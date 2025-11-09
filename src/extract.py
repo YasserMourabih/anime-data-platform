@@ -96,7 +96,7 @@ def main():
 
         # Sécurité pendant le dev : limiter le nombre de pages pour tester vite
         # Mets cette valeur à None ou très haut quand tu veux tout récupérer
-        MAX_PAGES_TO_FETCH = 10 
+        MAX_PAGES_TO_FETCH = 40
 
         while has_next_page:
             if MAX_PAGES_TO_FETCH and current_page > MAX_PAGES_TO_FETCH:

@@ -1,5 +1,3 @@
--- src/db/schema.sql
-
 -- Clean up existing table if exists
 DROP TABLE IF EXISTS raw_anilist;
 DROP TABLE IF EXISTS raw_anilist_json;
