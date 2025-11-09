@@ -20,3 +20,12 @@ SELECT
     raw_data->'title'->>'romaji' AS title,
     jsonb_array_elements_text(raw_data->'genres') AS genre
 FROM raw_anilist_json;
+
+-- Vue pour les studios principaux
+CREATE OR REPLACE VIEW view_anime_studios AS
+SELECT
+    anime_id,
+    raw_data->'title'->>'romaji' AS title,
+    studio_node->>'name' AS studio_name
+FROM raw_anilist_json,
+LATERAL jsonb_array_elements(raw_data->'studios'->'nodes') AS studio_node;

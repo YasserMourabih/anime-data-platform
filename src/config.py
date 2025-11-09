@@ -13,6 +13,7 @@ DB_PARAMS = {
     "user": os.getenv("DB_USER"),
     "password": os.getenv("DB_PASS"),
 }
+MAX_PAGES_TO_FETCH = 300 # 1 page = 50 animes
 
 # 2. Configurer le logging
 # Cela va afficher les logs dans la console avec un format précis : [HEURE] [NIVEAU] Message

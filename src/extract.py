@@ -2,7 +2,7 @@ import time
 import requests
 import psycopg2
 from psycopg2.extras import execute_values, Json
-from config import DB_PARAMS, ANILIST_API_URL, logger #On importe depuis src/config.py
+from config import DB_PARAMS, ANILIST_API_URL, MAX_PAGES_TO_FETCH, logger #On importe depuis src/config.py
 from queries import ANILIST_FETCH_PAGE_QUERY, ANILIST_UPSERT_ANIME
 
 # Vérification basique de la config (déjà chargée par config.py)
@@ -96,8 +96,6 @@ def main():
 
         # Sécurité pendant le dev : limiter le nombre de pages pour tester vite
         # Mets cette valeur à None ou très haut quand tu veux tout récupérer
-        MAX_PAGES_TO_FETCH = 40
-
         while has_next_page:
             if MAX_PAGES_TO_FETCH and current_page > MAX_PAGES_TO_FETCH:
                 logger.info(f"🛑 Limite de {MAX_PAGES_TO_FETCH} pages atteinte pour ce run.")
@@ -120,7 +118,7 @@ def main():
             current_page += 1
             
             # Respectful delay
-            time.sleep(1) # Petit délai pour ne pas spammer l'API même si on est sous la limite
+            time.sleep(2) # Petit délai pour ne pas spammer l'API même si on est sous la limite (1s = API normale / 2s = API degradée)
 
     except Exception as e:
         logger.critical("🔥 Arrêt inattendu du pipeline.", exc_info=True)
