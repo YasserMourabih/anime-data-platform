@@ -26,6 +26,14 @@ query ($page: Int, $perPage: Int) {
       episodes
       format
       status
+      description(asHtml: false)
+      characters(sort: ROLE, role: MAIN, perPage: 5) { 
+        nodes {
+          name {
+            full
+          }
+        }
+      }
       studios(isMain: true) {
         nodes {
            name
