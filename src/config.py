@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 # 1. Charger les variables d'env une bonne fois pour toutes
 load_dotenv()
 
-
 ANILIST_API_URL = os.getenv("ANILIST_API_URL")
 # Regroupement des paramètres DB pour psycopg2.connect(**DB_PARAMS)
 DB_PARAMS = {

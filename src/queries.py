@@ -16,7 +16,11 @@ query ($page: Int, $perPage: Int) {
         romaji
         english
       }
-      # ... tes autres champs ...
+      startDate {
+        year
+        month
+        day
+      }
       averageScore
       genres
       episodes
