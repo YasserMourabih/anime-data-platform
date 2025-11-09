@@ -3,95 +3,134 @@ import requests
 import psycopg2
 from psycopg2.extras import execute_values, Json
 from config import DB_PARAMS, ANILIST_API_URL, logger #On importe depuis src/config.py
+from queries import ANILIST_FETCH_PAGE_QUERY, ANILIST_UPSERT_ANIME
 
 # Vérification basique de la config (déjà chargée par config.py)
 if not all(DB_PARAMS.values()) or not ANILIST_API_URL:
     raise EnvironmentError("❌ Missing environment variables. Check your .env file")
 
-# --- QUERY DEFINITION ---
-QUERY = '''
-query ($page: Int, $perPage: Int) {
-  Page (page: $page, perPage: $perPage) {
-    # On demande des métadonnées sur la pagination
-    pageInfo {
-      hasNextPage
-      lastPage
-    }
-    media (type: ANIME, sort: POPULARITY_DESC) {
-      id
-      title {
-        romaji
-        english
-      }
-      averageScore
-      # On peux ajouter d'autres champs maintenant (genres, episodes...)
-      # comme on stocke en JSONB, ça ne cassera rien !
-      genres
-      episodes
-    }
-  }
-}
-'''
+def get_db_connection():
+    """Crée et retourne une connexion à la base de données."""
+    try:
+        conn = psycopg2.connect(**DB_PARAMS)
+        return conn
+    except psycopg2.Error as e:
+        logger.error(f"❌ Impossible de se connecter à la BDD : {e}")
+        raise  # On relance l'exception pour arrêter le script si la BDD est down
 
-# --- EXTRACTION LOOP ---
-MAX_PAGES = 10 # Juste une sécurité pour éviter les boucles infinies
-current_page = 1
-has_next_page = True
+def fetch_anilist_page(page: int, per_page: int = 50, max_retries: int = 5) -> dict:
+    """
+    Récupère une page de résultats depuis l'API AniList.
+    Gère le rate limiting (429) avec retry limité.
+    """
+    variables = {'page': page, 'perPage': per_page}
+    attempt = 0
+    while attempt < max_retries: # Boucle de retry pour le rate limiting
+        attempt += 1
+        try:
+            response = requests.post(
+                ANILIST_API_URL,
+                json={'query': ANILIST_FETCH_PAGE_QUERY, 'variables': variables}, 
+                timeout=15
+            )
+            
+            if response.status_code == 429:
+                retry_after = int(response.headers.get('Retry-After', 60))
+                logger.warning(f"⏳ Rate limit atteint (tentative {attempt}/{max_retries}), attendre {retry_after}s... ")
+                time.sleep(retry_after + 5) # On ajoute une petite marge de sécurité
+                continue # On réessaie la même requête
 
-logger.info("🚀 Démarrage de l'extraction paginée...")
+            response.raise_for_status() # Lève une exception pour les autres codes d'erreur (5xx, 404...)
+            return response.json()
 
-while (has_next_page) and (current_page <= MAX_PAGES):  # Limite à 10 pages pour les tests
-    logger.info(f"📄 Extraction de la page {current_page}...")
-    variables = {'page': current_page, 'perPage': 50} # On augmente un peu perPage
+        except requests.exceptions.RequestException as e:
+            if attempt >= max_retries:
+                logger.error(
+                    f"❌ Échec définitif après {max_retries} tentatives "
+                    f"pour la page {page} : {e}"
+                )
+                raise
+            else:
+                logger.warning(
+                    f"⚠️ Erreur réseau (tentative {attempt}/{max_retries}) "
+                    f"page {page} : {e}. Retry dans 5s..."
+                )
+                time.sleep(5)
+                continue
+
+    # Ne devrait jamais arriver (raise dans le except ci-dessus)
+    raise RuntimeError(f"Échec après {max_retries} tentatives (page {page})")
+
+def save_page_to_db(conn, animes_data: list) -> int:
+    """
+    Insère une liste d'objets animes bruts dans la table raw_anilist_json.
+    Utilise une connexion existante.
+    """
+    if not animes_data:
+        return 0
+
+    # Préparation des données pour execute_values
+    tuples_to_insert = [(anime['id'], Json(anime)) for anime in animes_data]
     
     try:
-        response = requests.post(ANILIST_API_URL, json={'query': QUERY, 'variables': variables}, timeout=10)
-        
-        # GESTION AVANCÉE DU RATE LIMIT (Optionnel mais recommandé)
-        # Si on reçoit une erreur 429 (Too Many Requests), on attend et on réessaie
-        if response.status_code == 429:
-            retry_after = int(response.headers.get('Retry-After', 60))
-            logger.warning(f"⚠️ Rate limit atteint. Pause de {retry_after}s...")
-            time.sleep(retry_after + 1)
-            continue # On recommence la même boucle (même page)
+        with conn.cursor() as cur:
+            execute_values(cur, ANILIST_UPSERT_ANIME, tuples_to_insert)
+        conn.commit()
+        return len(tuples_to_insert)
+    except psycopg2.Error as e:
+        conn.rollback() # Important : on annule la transaction en cas d'erreur
+        logger.error(f"❌ Erreur lors de l'insertion en BDD : {e}")
+        raise
 
-        response.raise_for_status()
-        json_data = response.json()
+def main():
+    """Fonction principale d'orchestration."""
+    start_time = time.time()
+    logger.info("🚀 Démarrage du pipeline d'extraction AniList")
 
-        # 1. Récupérer les données et infos de pagination
-        page_data = json_data['data']['Page']['media']
-        page_info = json_data['data']['Page']['pageInfo']
+    conn = None
+    try:
+        conn = get_db_connection()
+        current_page = 1
+        has_next_page = True
+        total_inserted = 0
 
-        # 2. Transformation (ELT style avec Json wrapper)
-        animes_to_insert = [(anime['id'], Json(anime)) for anime in page_data]
+        # Sécurité pendant le dev : limiter le nombre de pages pour tester vite
+        # Mets cette valeur à None ou très haut quand tu veux tout récupérer
+        MAX_PAGES_TO_FETCH = 10 
 
-        # 3. Chargement immédiat (une page = une transaction)
-        # C'est mieux de charger page par page pour ne pas tout perdre si ça plante à la page 50.
-        insert_query = """
-        INSERT INTO raw_anilist_json (anime_id, raw_data)
-        VALUES %s
-        ON CONFLICT (anime_id) DO UPDATE 
-        SET raw_data = EXCLUDED.raw_data,
-            fetched_at = CURRENT_TIMESTAMP;
-        """
+        while has_next_page:
+            if MAX_PAGES_TO_FETCH and current_page > MAX_PAGES_TO_FETCH:
+                logger.info(f"🛑 Limite de {MAX_PAGES_TO_FETCH} pages atteinte pour ce run.")
+                break
 
-        with psycopg2.connect(**DB_PARAMS) as conn: # Context manager auto-commits or rollbacks 
-            with conn.cursor() as cur:
-                execute_values(cur, insert_query, animes_to_insert)
+            logger.info(f"📄 Traitement de la page {current_page}...")
+            
+            # 1. Extract
+            api_response = fetch_anilist_page(current_page)
+            data = api_response['data']['Page']
+            animes_list = data['media']
+            page_info = data['pageInfo']
 
-        logger.info(f"✅ Page {current_page} insérée ({len(page_data)} animes).")
-
-        # 4. Préparer la suite
-        has_next_page = page_info['hasNextPage']
-        current_page += 1
-        
-        # Trèèès important : être gentil avec l'API
-        time.sleep(1)
-
+            # 2. Load
+            nb_inserted = save_page_to_db(conn, animes_list)
+            total_inserted += nb_inserted
+            
+            # 3. Prepare next loop
+            has_next_page = page_info['hasNextPage']
+            current_page += 1
+            
+            # Respectful delay
+            time.sleep(1) # Petit délai pour ne pas spammer l'API même si on est sous la limite
 
     except Exception as e:
-        logger.error(f"❌ Erreur critique à la page {current_page} : {e}")
-        # On peut décider de break ou de continuer, pour l'instant on arrête
-        break
+        logger.critical("🔥 Arrêt inattendu du pipeline.", exc_info=True)
+    finally:
+        if conn:
+            conn.close()
+            logger.debug("Connexion BDD fermée.")
 
-logger.info("🎉 Extraction terminée !")
+    duration = time.time() - start_time
+    logger.info(f"🎉 Pipeline terminé en {duration:.2f}s. Total animes traités : {total_inserted}")
+
+if __name__ == "__main__":
+    main()
