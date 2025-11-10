@@ -1,8 +1,23 @@
+"""
+Module pour l'extraction des données AniList.
+
+Ce module contient la logique métier pour :
+1. Fetcher les pages de l'API AniList avec gestion du rate limiting
+2. Sauvegarder les données dans PostgreSQL (table raw_anilist_json)
+3. Gérer les retries en cas d'erreur réseau ou serveur
+
+Cette fonction peut être appelée :
+- Depuis un asset Dagster (avec logger Dagster)
+- Depuis un script CLI (avec logger standard)
+- Depuis un notebook (sans logger)
+"""
+
 import time
 import requests
 import psycopg2
 from psycopg2.extras import execute_values, Json
-from src.config import DB_PARAMS, ANILIST_API_URL, MAX_PAGES_TO_FETCH, logger #On importe depuis src/config.py
+from dagster import MetadataValue
+from src.config import DB_PARAMS, ANILIST_API_URL, MAX_PAGES_TO_FETCH, logger
 from src.queries import ANILIST_FETCH_PAGE_QUERY, ANILIST_UPSERT_ANIME
 
 # Vérification basique de la config (déjà chargée par config.py)
@@ -89,9 +104,52 @@ def save_page_to_db(conn, animes_data: list, logger=None) -> int:
         raise
 
 def main():
-    """Fonction principale d'orchestration."""
+    """
+    Fonction principale d'orchestration (legacy pour rétro-compatibilité).
+    Utilise maintenant extract_anilist_data() en interne.
+    """
+    result = extract_anilist_data(logger=logger)
+    logger.info(f"✅ Extraction terminée : {result['num_records']} animes en {result['duration_seconds']:.2f}s")
+
+
+def extract_anilist_data(
+    max_pages: int = None,
+    delay_between_pages: int = 2,
+    logger=None
+) -> dict:
+    """
+    Fonction principale d'extraction des données AniList.
+    
+    Args:
+        max_pages: Nombre max de pages à extraire (None = utiliser MAX_PAGES_TO_FETCH de config)
+        delay_between_pages: Délai en secondes entre chaque page (défaut: 2s)
+        logger: Logger optionnel (Dagster ou logging standard)
+        
+    Returns:
+        dict: Métadonnées pour Dagster (nombre d'animes, pages, durée, etc.)
+    """
+    
+    def log(msg, level="info"):
+        """Helper pour logger avec ou sans logger externe."""
+        if logger:
+            if level == "info":
+                logger.info(msg)
+            elif level == "warning":
+                logger.warning(msg)
+            elif level == "error":
+                logger.error(msg)
+            elif level == "critical":
+                logger.critical(msg)
+            elif level == "debug":
+                logger.debug(msg)
+        else:
+            print(msg)
+    
     start_time = time.time()
-    logger.info("🚀 Démarrage du pipeline d'extraction AniList")
+    log("🚀 Démarrage du pipeline d'extraction AniList")
+
+    # Utiliser max_pages si fourni, sinon MAX_PAGES_TO_FETCH de config
+    pages_limit = max_pages if max_pages is not None else MAX_PAGES_TO_FETCH
 
     conn = None
     try:
@@ -100,23 +158,22 @@ def main():
         has_next_page = True
         total_inserted = 0
 
-        # Sécurité pendant le dev : limiter le nombre de pages pour tester vite
-        # Mets cette valeur à None ou très haut quand tu veux tout récupérer
+        # Boucle d'extraction
         while has_next_page:
-            if MAX_PAGES_TO_FETCH and current_page > MAX_PAGES_TO_FETCH:
-                logger.info(f"🛑 Limite de {MAX_PAGES_TO_FETCH} pages atteinte pour ce run.")
+            if pages_limit and current_page > pages_limit:
+                log(f"🛑 Limite de {pages_limit} pages atteinte pour ce run.")
                 break
 
-            logger.info(f"📄 Traitement de la page {current_page}...")
+            log(f"📄 Traitement de la page {current_page}...")
             
             # 1. Extract
-            api_response = fetch_anilist_page(current_page)
+            api_response = fetch_anilist_page(current_page, logger=logger)
             data = api_response['data']['Page']
             animes_list = data['media']
             page_info = data['pageInfo']
 
             # 2. Load
-            nb_inserted = save_page_to_db(conn, animes_list)
+            nb_inserted = save_page_to_db(conn, animes_list, logger=logger)
             total_inserted += nb_inserted
             
             # 3. Prepare next loop
@@ -124,17 +181,55 @@ def main():
             current_page += 1
             
             # Respectful delay
-            time.sleep(2) # Petit délai pour ne pas spammer l'API même si on est sous la limite (1s = API normale / 2s = API degradée)
+            time.sleep(delay_between_pages)
+
+        duration = time.time() - start_time
+        log(f"🎉 Pipeline terminé en {duration:.2f}s. Total animes traités : {total_inserted}")
+        
+        # Métadonnées pour Dagster
+        metadata = {
+            "num_records": total_inserted,
+            "last_page_fetched": current_page - 1,
+            "duration_seconds": round(duration, 2),
+            "pages_processed": current_page - 1,
+            "avg_records_per_page": round(total_inserted / max(current_page - 1, 1), 2),
+            "preview": MetadataValue.md(
+                f"""
+                ## Extraction AniList réussie ✅
+                
+                - **Total animes** : {total_inserted:,}
+                - **Pages traitées** : {current_page - 1}
+                - **Durée** : {duration:.2f}s
+                - **Moyenne** : {total_inserted / max(current_page - 1, 1):.1f} animes/page
+                """
+            )
+        }
+        
+        return metadata
 
     except Exception as e:
-        logger.critical("🔥 Arrêt inattendu du pipeline.", exc_info=True)
+        log(f"🔥 Arrêt inattendu du pipeline : {e}", level="critical")
+        raise
+        
     finally:
         if conn:
             conn.close()
-            logger.debug("Connexion BDD fermée.")
-
-    duration = time.time() - start_time
-    logger.info(f"🎉 Pipeline terminé en {duration:.2f}s. Total animes traités : {total_inserted}")
+            log("Connexion BDD fermée.", level="debug")
 
 if __name__ == "__main__":
-    main()
+    """Permet d'exécuter le script directement depuis la ligne de commande."""
+    import logging
+    
+    # Le logger est déjà configuré dans config.py, mais on peut le reconfigurer si besoin
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    cli_logger = logging.getLogger(__name__)
+    
+    print("🚀 Démarrage de l'extraction AniList...")
+    result = extract_anilist_data(logger=cli_logger)
+    print(f"\n📊 Résultats:")
+    for key, value in result.items():
+        if key != "preview":
+            print(f"  - {key}: {value}")
