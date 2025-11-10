@@ -29,3 +29,15 @@ SELECT
     studio_node->>'name' AS studio_name
 FROM raw_anilist_json,
 LATERAL jsonb_array_elements(raw_data->'studios'->'nodes') AS studio_node;
+
+-- Vue pour les tags (filtrée pour la qualité)
+CREATE OR REPLACE VIEW view_anime_tags AS
+SELECT
+    anime_id,
+    raw_data->'title'->>'romaji' AS title,
+    tag_node->>'name' AS tag,
+    (tag_node->>'rank')::INTEGER AS rank
+FROM raw_anilist_json,
+LATERAL jsonb_array_elements(raw_data->'tags') AS tag_node
+WHERE (tag_node->>'isMediaSpoiler')::BOOLEAN = false -- On exclut les spoilers
+  AND (tag_node->>'rank')::INTEGER >= 60; -- On ne garde que les tags pertinents
