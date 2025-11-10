@@ -12,7 +12,7 @@ def load_recommendations():
     with open(JSON_PATH, 'r') as f:
         return json.load(f)
 
-st.title("⚡ Anime Recommender (Fast Version)")
+st.title("Anime Recommender (Fast Version)")
 
 try:
     recos_dict = load_recommendations()
