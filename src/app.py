@@ -22,7 +22,7 @@ def get_db_engine():
 @st.cache_data
 def load_data_v2():
     engine = get_db_engine()
-    df_anime = pd.read_sql("SELECT * FROM view_anime_basic", engine)
+    df_anime = pd.read_sql("SELECT * FROM view_anime_basic ORDER BY score DESC LIMIT 1000", engine)
     df_genres = pd.read_sql("SELECT anime_id, genre FROM view_anime_genres", engine)
     df_tags = pd.read_sql("SELECT anime_id, tag FROM view_anime_tags", engine) 
 
