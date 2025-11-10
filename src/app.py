@@ -1,14 +1,17 @@
+import sys
+import os
+# Ajoute le dossier courant au PYTHONPATH
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import streamlit as st
 import pandas as pd
 import sqlalchemy
-import os
 from sklearn.metrics.pairwise import cosine_similarity, linear_kernel
 from sklearn.feature_extraction.text import TfidfVectorizer
 from dotenv import load_dotenv
 from config import logger
 
 # --- 1. CONFIG & CHARGEMENT ---
-st.set_page_config(page_title="Anime Recommender", page_icon="🎬", layout="centered")
+st.set_page_config(page_title="Anime Recommender", layout="centered")
 load_dotenv()
 
 @st.cache_resource
@@ -120,7 +123,7 @@ def get_recommendations(anime_title, df_anime, indices, similarity_matrix, top_k
         return pd.Series(dtype=float)
 
 # --- 3. INTERFACE UTILISATEUR ---
-st.title("🎬 Anime Recommender")
+st.title("Anime Recommender")
 st.write("Découvre de nouvelles pépites basées sur tes goûts !")
 
 try:

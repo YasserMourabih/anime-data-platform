@@ -6,13 +6,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ANILIST_API_URL = os.getenv("ANILIST_API_URL")
+
 # Regroupement des paramètres DB pour psycopg2.connect(**DB_PARAMS)
 DB_PARAMS = {
     "host": os.getenv("DB_HOST"),
+    "port": int(os.getenv("DB_PORT", 5432)),
     "dbname": os.getenv("DB_NAME"),
     "user": os.getenv("DB_USER"),
     "password": os.getenv("DB_PASS"),
+    "sslmode": os.getenv("SSL_MODE","prefer"),
 }
+
 MAX_PAGES_TO_FETCH = 500 # 1 page = 50 animes
 
 # 2. Configurer le logging
