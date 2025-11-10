@@ -2,7 +2,8 @@ import streamlit as st
 import pandas as pd
 import sqlalchemy
 import os
-from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics.pairwise import cosine_similarity, linear_kernel
+from sklearn.feature_extraction.text import TfidfVectorizer
 from dotenv import load_dotenv
 from config import logger
 
@@ -16,28 +17,57 @@ def get_db_engine():
     return sqlalchemy.create_engine(url)
 
 @st.cache_data
-def load_data():
+def load_data_v2():
     engine = get_db_engine()
     df_anime = pd.read_sql("SELECT * FROM view_anime_basic", engine)
     df_genres = pd.read_sql("SELECT anime_id, genre FROM view_anime_genres", engine)
-    
-    # Préparation de la matrice
-    # how='left' signifie : garde tout ce qu'il y a dans le DataFrame de gauche (df_anime)
-    df_merged = pd.merge(df_anime[['anime_id', 'title']], df_genres, on='anime_id', how='left')
-    df_merged['genre'] = df_merged['genre'].fillna('Unknown')
-    anime_genre_matrix = pd.crosstab(df_merged['title'], df_merged['genre'])
-    similarity_matrix = cosine_similarity(anime_genre_matrix)
-    
-    return df_anime, anime_genre_matrix, similarity_matrix
+    df_tags = pd.read_sql("SELECT anime_id, tag FROM view_anime_tags", engine) 
 
-# --- 2. LOGIQUE DE RECOMMANDATION (CORRIGÉE) ---
-def get_recommendations(anime_title, anime_genre_matrix, similarity_matrix, top_k=5):
+    # 1. Préparer les genres
+    df_genres = df_genres.rename(columns={'genre': 'feature_value'})
+
+    # 2. Préparer les tags
+    df_tags = df_tags.rename(columns={'tag': 'feature_value'})
+
+    # 3. Combiner genres et tags
+    df_features = pd.concat([
+        df_genres[['anime_id', 'feature_value']],
+        df_tags[['anime_id', 'feature_value']]
+    ], ignore_index=True)
+
+    # 4. Créer la "soupe" de features par anime
+    anime_soup = df_features.groupby('anime_id')['feature_value'].apply(
+        lambda x: ' '.join(x.astype(str))
+    ).reset_index()
+    anime_soup.columns = ['anime_id', 'soup']
+
+    # 5. Fusionner avec les titres
+    df_final = pd.merge(df_anime[['anime_id', 'title']], anime_soup, on='anime_id', how='left')
+    df_final['soup'] = df_final['soup'].fillna('')
+
+    # 6. Appliquer TF-IDF
+    tfidf = TfidfVectorizer(stop_words='english', min_df=3, max_features=1000)
+    tfidf_matrix = tfidf.fit_transform(df_final['soup'])
+
+    logger.info(f"Taille matrice TF-IDF : {tfidf_matrix.shape}")
+
+    # 7. Calcul de similarité
+    similarity_matrix = linear_kernel(tfidf_matrix, tfidf_matrix)
+
+    # 8. Créer un index pour retrouver les animes par titre
+    indices = pd.Series(df_final.index, index=df_final['title']).drop_duplicates()
+
+    return df_final, indices, similarity_matrix
+    
+# --- 2. LOGIQUE DE RECOMMANDATION ---
+def get_recommendations(anime_title, df_anime, indices, similarity_matrix, top_k=10):
     """
     Recommande les K animes les plus similaires
     
     Args:
         anime_title (str): Titre de l'anime de référence
-        anime_genre_matrix (pd.DataFrame): Matrice anime x genres
+        df_anime (pd.DataFrame): DataFrame avec les animes
+        indices (pd.Series): Mapping titre -> index
         similarity_matrix (np.ndarray): Matrice de similarité
         top_k (int): Nombre de recommandations
         
@@ -45,32 +75,30 @@ def get_recommendations(anime_title, anime_genre_matrix, similarity_matrix, top_
         pd.Series: Top K animes similaires avec leurs scores
     """
     # Vérifier que l'anime existe
-    if anime_title not in anime_genre_matrix.index:
+    if anime_title not in indices:
         logger.warning(f"Anime '{anime_title}' not found in the dataset.")
         return None
 
-    # Trouver la position de l'anime
-    index = anime_genre_matrix.index.get_loc(anime_title)
+    # Trouver l'index de l'anime
+    idx = indices[anime_title]
 
-    # Récupérer les scores de similarité
-    sim_scores = pd.Series(
-        similarity_matrix[index], 
-        index=anime_genre_matrix.index
-    )
+    # Récupérer les scores de similarité pour cet anime
+    sim_scores = list(enumerate(similarity_matrix[idx]))
 
-    # Trier par ordre décroissant
-    sim_scores = sim_scores.sort_values(ascending=False)
+    # Trier par score décroissant
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
 
-    # Exclure l'anime lui-même
-    sim_scores = sim_scores.drop(anime_title)
-    
+    # Exclure l'anime lui-même (premier résultat)
+    sim_scores = sim_scores[1:]
+
     # Filtrage anti-doublons
     final_recommendations = []
     seen_franchises = set()
     source_root = anime_title[:10].lower()
     seen_franchises.add(source_root)
 
-    for title, score in sim_scores.items():
+    for idx, score in sim_scores:
+        title = df_anime.iloc[idx]['title']
         candidate_root = title[:10].lower()
 
         if candidate_root in seen_franchises:   
@@ -78,6 +106,7 @@ def get_recommendations(anime_title, anime_genre_matrix, similarity_matrix, top_
 
         final_recommendations.append((title, score))
         seen_franchises.add(candidate_root)
+        
         if len(final_recommendations) >= top_k:
             break
     
@@ -96,17 +125,16 @@ st.write("Découvre de nouvelles pépites basées sur tes goûts !")
 
 try:
     with st.spinner("Chargement des données..."):
-        df_anime, anime_genre_matrix, sim_matrix = load_data()
+        df_anime, indices, sim_matrix = load_data_v2()
     
-    st.success(f"✅ {len(anime_genre_matrix)} animes disponibles")
+    st.success(f"✅ {len(df_anime)} animes disponibles")
     
     # Liste déroulante pour choisir l'anime source
-    all_titles = sorted(anime_genre_matrix.index.tolist())
+    all_titles = sorted(indices.index.tolist())
     selected_anime = st.selectbox("Tu as aimé quel anime ?", all_titles)
 
     if st.button("🎯 Trouver des recommandations"):
-        # ✅ CORRIGÉ : 4 paramètres au lieu de 3
-        recos = get_recommendations(selected_anime, anime_genre_matrix, sim_matrix, top_k=10)
+        recos = get_recommendations(selected_anime, df_anime, indices, sim_matrix, top_k=10)
 
         if recos is not None and not recos.empty:
             st.success(f"Si tu as aimé **{selected_anime}**, tu devrais essayer :")
@@ -116,11 +144,11 @@ try:
                     st.write(f"**{i}. {title}**")
                 with col2:
                     st.write(f"{score:.2%}")
-                st.progress(int(score * 100))
+                st.progress(min(int(score * 100), 100))
                 st.divider()
         else:
             st.warning("Pas de recommandations trouvées.")
 
 except Exception as e:
     st.error(f"❌ Erreur : {e}")
-    logger.error(f"Streamlit error: {e}")
+    logger.error(f"Streamlit error: {e}", exc_info=True)

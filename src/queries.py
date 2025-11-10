@@ -23,6 +23,11 @@ query ($page: Int, $perPage: Int) {
       }
       averageScore
       genres
+      tags {
+        name
+        rank
+        isMediaSpoiler 
+      }
       episodes
       format
       status
