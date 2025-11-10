@@ -1,12 +1,20 @@
-from dagster import asset, MaterializeResult, MetadataValue, AssetExecutionContext
+"""
+Définition des assets Dagster pour le pipeline anime-data-platform.
+
+Ce module contient les assets pour :
+- raw_anilist_data : Extraction des données depuis l'API AniList
+- anime_recommendations : Calcul des recommandations basées sur TF-IDF
+
+Les assets sont des wrappers légers autour des fonctions métier,
+permettant une séparation claire entre orchestration et logique métier.
+"""
+
+from dagster import asset, MaterializeResult, AssetExecutionContext
 import time
-import os
-from dotenv import load_dotenv
 from src.extract import extract_anilist_data
 from src.config import MAX_PAGES_TO_FETCH
 from src.compute_recommendations import compute_and_save_recommendations
 
-load_dotenv()
 
 @asset(
     group_name="ingestion",
@@ -19,7 +27,7 @@ def raw_anilist_data(context: AssetExecutionContext) -> MaterializeResult:
     Cet asset est un simple wrapper autour de la fonction métier extract_anilist_data.
     La séparation permet de tester la logique métier indépendamment de Dagster.
     """
-    context.log.info("� Démarrage de l'extraction AniList via Dagster...")
+    context.log.info("🚀 Démarrage de l'extraction AniList via Dagster...")
     
     # Appeler la fonction métier avec le logger Dagster
     metadata = extract_anilist_data(
