@@ -108,8 +108,9 @@ def compute_and_save_recommendations(
         sim_scores = list(enumerate(similarity_matrix[idx]))
         sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
         
-        # Exclure l'anime lui-même et prendre les top_k meilleurs
-        sim_scores = sim_scores[1:top_k+1]
+        # Exclure l'anime lui-même et prendre beaucoup plus de candidats
+        # pour avoir assez de diversité après le filtrage anti-doublons
+        sim_scores = sim_scores[1:top_k*5]  # On prend 5x plus de candidats
         
         # Filtrage anti-doublons (franchises)
         final_recommendations = []
