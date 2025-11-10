@@ -1,8 +1,42 @@
+# Python
 venv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Environment variables
 .env
-.DS_Store
-logs/
+
+# Dagster
+.tmp_dagster_home*/
+dagster_home/
+
+# IDE
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Project specific
 TODO.md
+
+# Data (optionnel)
+# data/
+# *.csv
+# *.json
