@@ -24,7 +24,7 @@ try:
         if selected_anime in recos_dict:
             st.success(f"Recommandations pour **{selected_anime}** :")
             for reco_title, score in recos_dict[selected_anime][:10]: # On affiche les top 10
-                st.write(f"**{reco_title}** ({int(score*100)}% similarité)")
+                st.write(f"**{reco_title}** ({int(score*100)}%)")
                 st.progress(score)
         else:
             st.error("Anime non trouvé dans la base pré-calculée.")

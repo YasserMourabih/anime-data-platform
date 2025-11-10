@@ -2,8 +2,8 @@ import time
 import requests
 import psycopg2
 from psycopg2.extras import execute_values, Json
-from config import DB_PARAMS, ANILIST_API_URL, MAX_PAGES_TO_FETCH, logger #On importe depuis src/config.py
-from queries import ANILIST_FETCH_PAGE_QUERY, ANILIST_UPSERT_ANIME
+from src.config import DB_PARAMS, ANILIST_API_URL, MAX_PAGES_TO_FETCH, logger #On importe depuis src/config.py
+from src.queries import ANILIST_FETCH_PAGE_QUERY, ANILIST_UPSERT_ANIME
 
 # Vérification basique de la config (déjà chargée par config.py)
 if not all(DB_PARAMS.values()) or not ANILIST_API_URL:
@@ -18,11 +18,14 @@ def get_db_connection():
         logger.error(f"❌ Impossible de se connecter à la BDD : {e}")
         raise  # On relance l'exception pour arrêter le script si la BDD est down
 
-def fetch_anilist_page(page: int, per_page: int = 50, max_retries: int = 5) -> dict:
+def fetch_anilist_page(page: int, per_page: int = 50, max_retries: int = 5, logger=None) -> dict:
     """
     Récupère une page de résultats depuis l'API AniList.
     Gère le rate limiting (429) avec retry limité.
     """
+    # Utiliser le logger passé en paramètre ou celui par défaut de config.py
+    log = logger if logger else globals()['logger']
+    
     variables = {'page': page, 'perPage': per_page}
     attempt = 0
     while attempt < max_retries: # Boucle de retry pour le rate limiting
@@ -36,7 +39,7 @@ def fetch_anilist_page(page: int, per_page: int = 50, max_retries: int = 5) -> d
             
             if response.status_code == 429:
                 retry_after = int(response.headers.get('Retry-After', 60))
-                logger.warning(f"⏳ Rate limit atteint (tentative {attempt}/{max_retries}), attendre {retry_after}s... ")
+                log.warning(f"⏳ Rate limit atteint (tentative {attempt}/{max_retries}), attendre {retry_after}s... ")
                 time.sleep(retry_after + 5) # On ajoute une petite marge de sécurité
                 continue # On réessaie la même requête
 
@@ -45,13 +48,13 @@ def fetch_anilist_page(page: int, per_page: int = 50, max_retries: int = 5) -> d
 
         except requests.exceptions.RequestException as e:
             if attempt >= max_retries:
-                logger.error(
+                log.error(
                     f"❌ Échec définitif après {max_retries} tentatives "
                     f"pour la page {page} : {e}"
                 )
                 raise
             else:
-                logger.warning(
+                log.warning(
                     f"⚠️ Erreur réseau (tentative {attempt}/{max_retries}) "
                     f"page {page} : {e}. Retry dans 5s..."
                 )
@@ -61,11 +64,14 @@ def fetch_anilist_page(page: int, per_page: int = 50, max_retries: int = 5) -> d
     # Ne devrait jamais arriver (raise dans le except ci-dessus)
     raise RuntimeError(f"Échec après {max_retries} tentatives (page {page})")
 
-def save_page_to_db(conn, animes_data: list) -> int:
+def save_page_to_db(conn, animes_data: list, logger=None) -> int:
     """
     Insère une liste d'objets animes bruts dans la table raw_anilist_json.
     Utilise une connexion existante.
     """
+    # Utiliser le logger passé en paramètre ou celui par défaut de config.py
+    log = logger if logger else globals()['logger']
+    
     if not animes_data:
         return 0
 
@@ -79,7 +85,7 @@ def save_page_to_db(conn, animes_data: list) -> int:
         return len(tuples_to_insert)
     except psycopg2.Error as e:
         conn.rollback() # Important : on annule la transaction en cas d'erreur
-        logger.error(f"❌ Erreur lors de l'insertion en BDD : {e}")
+        log.error(f"❌ Erreur lors de l'insertion en BDD : {e}")
         raise
 
 def main():
