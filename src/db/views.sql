@@ -5,9 +5,11 @@ SELECT
     raw_data->'title'->>'romaji' AS title,
     raw_data->>'description' AS description,  -- Synopsis de l'anime
     (raw_data->>'averageScore')::INTEGER AS score,
+    (raw_data->>'popularity')::INTEGER AS popularity,  -- Popularité pour trier
     (raw_data->>'episodes')::INTEGER AS episodes,
     raw_data->>'format' AS format,
     raw_data->>'status' AS status,
+    raw_data->'coverImage'->>'large' AS cover_image,  -- Image de couverture
     -- On extrait l'année de début si disponible
     (raw_data->'startDate'->>'year')::INTEGER AS start_year,
     fetched_at
