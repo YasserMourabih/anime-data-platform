@@ -17,7 +17,7 @@ DB_PARAMS = {
     "sslmode": os.getenv("SSL_MODE","prefer"),
 }
 
-MAX_PAGES_TO_FETCH = 500 # 1 page = 50 animes
+MAX_PAGES_TO_FETCH = 5# 1 page = 50 animes
 
 # 2. Configurer le logging
 # Cela va afficher les logs dans la console avec un format précis : [HEURE] [NIVEAU] Message

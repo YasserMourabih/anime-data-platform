@@ -1,0 +1,21 @@
+# Ignorer Git
+.git
+.gitignore
+
+# Ignorer l'environnement virtuel
+venv/
+
+# Ignorer les caches Python
+__pycache__/
+*.pyc
+
+# Ignorer les fichiers de config locaux
+.env
+
+# Les artefacts de données n'ont pas à être dans l'image,
+# car l'image va les RE-CRÉER elle-même.
+data/
+
+# Fichiers de configuration IDE
+.vscode/
+.idea/
