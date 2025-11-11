@@ -7,7 +7,7 @@ Ce module contient la logique métier pour :
 3. Calculer la matrice TF-IDF
 4. Calculer la similarité cosinus
 5. Générer les recommandations pour chaque anime
-6. Sauvegarder dans data/recommendations.json
+6. Sauvegarder dans data/recommendations.parquet (format optimisé)
 
 Cette fonction peut être appelée :
 - Depuis un asset Dagster (avec logger Dagster)
@@ -16,7 +16,6 @@ Cette fonction peut être appelée :
 """
 
 import pandas as pd
-import json
 import os
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -116,15 +115,15 @@ def extract_franchise_name(title):
 
 
 def compute_and_save_recommendations(
-    output_file: str = "data/recommendations.json",
+    output_file: str = "data/recommendations.parquet",
     top_k: int = 10,
     logger=None
 ) -> dict:
     """
-    Calcule les recommandations d'animes basées sur TF-IDF et les sauvegarde dans un fichier JSON.
+    Calcule les recommandations d'animes basées sur TF-IDF et les sauvegarde dans un fichier Parquet.
     
     Args:
-        output_file: Chemin du fichier JSON de sortie
+        output_file: Chemin du fichier Parquet de sortie
         top_k: Nombre de recommandations par anime
         logger: Logger optionnel (Dagster ou logging standard)
         
@@ -225,8 +224,10 @@ def compute_and_save_recommendations(
     similarity_matrix = linear_kernel(combined_matrix, combined_matrix)
     
     # 8. Génération des recommandations
-    log("💾 Génération des recommandations...")
-    recommendations_dict = {}
+    log("💾 Génération de la table des recommandations (format Parquet)...")
+    
+    # Au lieu d'un dictionnaire, on crée une liste de tuples pour un DataFrame plat
+    reco_list = []  # (source_title, reco_title, score)
     
     for idx, row in df_final.iterrows():
         title = row['title']
@@ -240,7 +241,7 @@ def compute_and_save_recommendations(
         sim_scores = sim_scores[1:top_k*10]  # On prend 10x plus de candidats pour compenser le filtrage strict
         
         # 🚫 Filtrage anti-doublons robuste (franchises)
-        final_recommendations = []
+        recommendations_count = 0
         seen_franchises = set()
         
         # Extraire le nom de franchise de l'anime source
@@ -260,34 +261,39 @@ def compute_and_save_recommendations(
             if source_franchise in candidate_title.lower() or candidate_franchise in title.lower():
                 continue
             
-            final_recommendations.append([candidate_title, round(float(score), 3)])
+            # Ajouter au format DataFrame (tuple)
+            reco_list.append((title, candidate_title, round(float(score), 3)))
             seen_franchises.add(candidate_franchise)
+            recommendations_count += 1
             
-            if len(final_recommendations) >= top_k:
+            if recommendations_count >= top_k:
                 break
-        
-        recommendations_dict[title] = final_recommendations
         
         # Log progression tous les 1000 animes
         if (idx + 1) % 1000 == 0:
-            log(f"   � {idx + 1}/{len(df_final)} animes traités...")
+            log(f"   📊 {idx + 1}/{len(df_final)} animes traités...")
     
-    # 9. Sauvegarde dans un fichier JSON
+    # 9. Convertir la liste en DataFrame
+    log("📊 Conversion en DataFrame...")
+    df_recos = pd.DataFrame(reco_list, columns=['source_title', 'reco_title', 'score'])
+    
+    # 10. Sauvegarde dans un fichier Parquet
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    log(f"📦 Sauvegarde dans {output_file}...")
+    log(f"📦 Sauvegarde au format Parquet : {output_file}...")
     
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(recommendations_dict, f, indent=2, ensure_ascii=False)
+    df_recos.to_parquet(output_file, index=False, compression='snappy')
     
-    log("✅ Recommandations générées avec succès !")
+    log("✅ Fichier Parquet sauvegardé avec succès !")
     
-    # 10. Calcul des métadonnées pour Dagster
-    total_animes = len(recommendations_dict)
-    avg_recommendations = sum(len(v) for v in recommendations_dict.values()) / total_animes if total_animes > 0 else 0
+    # 11. Calcul des métadonnées pour Dagster
+    total_animes = df_recos['source_title'].nunique()
+    total_recommendations = len(df_recos)
+    avg_recommendations = total_recommendations / total_animes if total_animes > 0 else 0
     file_size_mb = os.path.getsize(output_file) / (1024 * 1024)
     
     metadata = {
         "total_animes": total_animes,
+        "total_recommendations": total_recommendations,
         "avg_recommendations_per_anime": round(avg_recommendations, 2),
         "combined_matrix_shape": f"{combined_matrix.shape[0]} x {combined_matrix.shape[1]}",
         "meta_matrix_shape": f"{tfidf_matrix_meta.shape[0]} x {tfidf_matrix_meta.shape[1]}",
@@ -296,15 +302,18 @@ def compute_and_save_recommendations(
         "weight_desc": WEIGHT_DESC,
         "output_file": output_file,
         "file_size_mb": round(file_size_mb, 2),
+        "format": "Parquet (snappy compression)",
         "preview": MetadataValue.md(
             f"""
             ## Recommandations générées ✅
             
             - **Total animes** : {total_animes:,}
+            - **Total recommandations** : {total_recommendations:,}
             - **Moyenne recommandations/anime** : {avg_recommendations:.1f}
             - **Matrice Meta (genres+tags)** : {tfidf_matrix_meta.shape[0]:,} x {tfidf_matrix_meta.shape[1]:,} (poids: {WEIGHT_META*100:.0f}%)
             - **Matrice Synopsis** : {tfidf_matrix_desc.shape[0]:,} x {tfidf_matrix_desc.shape[1]:,} (poids: {WEIGHT_DESC*100:.0f}%)
             - **Matrice Combinée** : {combined_matrix.shape[0]:,} x {combined_matrix.shape[1]:,}
+            - **Format** : Parquet (snappy compression)
             - **Taille fichier** : {file_size_mb:.2f} MB
             - **Fichier** : `{output_file}`
             """
