@@ -27,48 +27,46 @@ def load_css(file_name):
 load_css("global_styles.css")
 load_css("home_styles.css")
 
+# L'URL publique de notre fichier Parquet
+PARQUET_URL = "https://github.com/YasserMourabih/anime-data-platform/releases/download/v1.0.0-data/recommendations.parquet"
+
 # --- LOAD STATS ---
 @st.cache_data(ttl=3600)  # Cache 1 heure
 def load_platform_stats():
     """Charge les statistiques dynamiques de la plateforme."""
+    stats = {}
     try:
-        # Connexion BDD pour compter les animes
+        # --- 1. Stats depuis la BDD (Neon) ---
+        # Cette partie était parfaite et ne change pas
         db_url = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASS')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}?sslmode=require"
         engine = sqlalchemy.create_engine(db_url)
         
-        # Compter les animes
         query_animes = "SELECT COUNT(*) as total FROM view_anime_basic WHERE score > 60"
         df_count = pd.read_sql(query_animes, engine)
         total_animes = int(df_count['total'].iloc[0])
+        stats['total_animes'] = f"{total_animes:,}"
         
-        # Charger les recommandations depuis Parquet
-        parquet_path = os.path.join(os.path.dirname(__file__), '../data/recommendations.parquet')
-        if os.path.exists(parquet_path):
-            df_recos = pd.read_parquet(parquet_path)
-            total_recos = len(df_recos)
-            # Calculer la performance (temps de chargement moyen)
-            import time
-            start = time.time()
-            _ = pd.read_parquet(parquet_path)
-            load_time = (time.time() - start) * 1000  # en ms
-        else:
-            total_recos = 0
-            load_time = 0
+        # --- 2. Stats depuis le Parquet (Cloud) ---
+        # On lit directement depuis l'URL, plus besoin de os.path.exists
+        import time
+        start = time.time()
+        df_recos = pd.read_parquet(PARQUET_URL)
+        load_time = (time.time() - start) * 1000  # en ms
+
+        total_recos = len(df_recos)
+        stats['total_recos'] = f"{total_recos:,}"
+        stats['load_time'] = f"{load_time:.0f}ms" if load_time < 1000 else f"{load_time/1000:.2f}s"
         
-        logger.info(f"📊 Stats chargées : {total_animes} animes, {total_recos} recommandations")
-        
-        return {
-            'total_animes': f"{total_animes:,}",
-            'total_recos': f"{total_recos:,}",
-            'load_time': f"{load_time:.0f}ms" if load_time < 1000 else f"{load_time/1000:.2f}s"
-        }
+        logger.info(f"📊 Stats chargées : {stats['total_animes']} animes, {stats['total_recos']} recommandations")
+        return stats
+
     except Exception as e:
         logger.error(f"❌ Erreur lors du chargement des stats : {e}")
-        # Fallback sur des valeurs par défaut
+        # Fallback si Neon ou le Parquet est inaccessible
         return {
-            'total_animes': "7,984",
-            'total_recos': "79,940",
-            'load_time': "<0.1s"
+            'total_animes': "N/A",
+            'total_recos': "N/A",
+            'load_time': "N/A"
         }
 
 stats = load_platform_stats()
