@@ -1,0 +1,91 @@
+/* ============================================================================
+   GLOBAL STYLES - Anime Data Platform
+   Styles partagés entre toutes les pages
+   ============================================================================ */
+
+/* Cacher la navigation automatique de Streamlit */
+[data-testid="stSidebarNav"] {
+    display: none;
+}
+
+/* ============================================================================
+   SIDEBAR PERSONNALISÉE
+   ============================================================================ */
+
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #667eea 0%, #764ba2 100%);
+}
+
+[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+    color: white;
+}
+
+[data-testid="stSidebar"] h1, 
+[data-testid="stSidebar"] h2, 
+[data-testid="stSidebar"] h3 {
+    color: white;
+}
+
+[data-testid="stSidebar"] hr {
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+[data-testid="stSidebar"] .stButton button {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+[data-testid="stSidebar"] .stButton button:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+}
+
+.sidebar-logo {
+    text-align: center;
+    padding: 2rem 1rem;
+    border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+    margin-bottom: 2rem;
+}
+
+.sidebar-logo-title {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: white;
+    margin-top: 0.5rem;
+}
+
+.sidebar-section {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 1rem;
+    border-radius: 10px;
+    margin-bottom: 1rem;
+}
+
+.sidebar-section-title {
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: rgba(255, 255, 255, 0.7);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 0.5rem;
+}
+
+/* ============================================================================
+   ANIMATIONS
+   ============================================================================ */
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideUpAppear {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
