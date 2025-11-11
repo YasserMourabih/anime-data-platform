@@ -18,13 +18,101 @@ Cette fonction peut être appelée :
 import pandas as pd
 import json
 import os
+import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
+from scipy.sparse import hstack  # Combinaison pondérée des matrices
 from dotenv import load_dotenv
 import sqlalchemy
 from dagster import MetadataValue
 
 load_dotenv()
+
+# 🎛️ Paramètres de pondération
+WEIGHT_META = 0.7  # 70% du poids pour les tags/genres (signal fiable)
+WEIGHT_DESC = 0.3  # 30% du poids pour le synopsis (bonus contexte)
+
+
+def clean_html(raw_html):
+    """
+    Nettoie les balises HTML d'une chaîne de caractères.
+    
+    Args:
+        raw_html: Texte potentiellement avec des balises HTML
+        
+    Returns:
+        str: Texte nettoyé sans balises HTML
+    """
+    if not raw_html:
+        return ''
+    
+    # Supprimer les balises HTML
+    cleanr = re.compile('<.*?>')
+    text = re.sub(cleanr, '', raw_html)
+    
+    # Nettoyer les espaces multiples
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
+
+
+def extract_franchise_name(title):
+    """
+    Extrait le nom de base d'une franchise en supprimant les variations.
+    
+    Exemples:
+        "Naruto" → "naruto"
+        "Naruto: Shippuden" → "naruto"
+        "Boruto: Naruto Next Generations" → "naruto"  (détecte "naruto" dans le titre)
+        "One Piece" → "one piece"
+        "One Piece Film: Red" → "one piece"
+        "Attack on Titan Season 2" → "attack on titan"
+    
+    Args:
+        title: Titre de l'anime
+        
+    Returns:
+        str: Nom de franchise normalisé
+    """
+    if not title:
+        return ''
+    
+    title_lower = title.lower()
+    
+    # Patterns à supprimer (séquelles, saisons, films, OVA, etc.)
+    patterns_to_remove = [
+        r'\s*:\s*.*',           # Tout après les deux-points (ex: "Naruto: Shippuden" → "Naruto")
+        r'\s+season\s+\d+.*',   # Season + numéro
+        r'\s+\d+(st|nd|rd|th)\s+season.*',
+        r'\s+part\s+\d+.*',     # Part + numéro
+        r'\s+movie.*',          # Movie
+        r'\s+film.*',           # Film
+        r'\s+ova.*',            # OVA
+        r'\s+ona.*',            # ONA
+        r'\s+special.*',        # Special
+        r'\s+recap.*',          # Recap
+        r'\s+\(.*\)$',          # Tout entre parenthèses à la fin
+        r'\s+\d+$',             # Numéro seul à la fin (ex: "Naruto 2")
+        r'\s+ii$',              # Chiffres romains
+        r'\s+iii$',
+        r'\s+iv$',
+        r'\s+v$',
+    ]
+    
+    # Appliquer tous les patterns
+    franchise_name = title_lower
+    for pattern in patterns_to_remove:
+        franchise_name = re.sub(pattern, '', franchise_name, flags=re.IGNORECASE)
+    
+    # Nettoyer les espaces multiples et trim
+    franchise_name = re.sub(r'\s+', ' ', franchise_name).strip()
+    
+    # Si c'est trop court après nettoyage, garder au moins 3 premiers mots
+    if len(franchise_name) < 3 and title_lower:
+        words = title_lower.split()
+        franchise_name = ' '.join(words[:min(3, len(words))])
+    
+    return franchise_name
 
 
 def compute_and_save_recommendations(
@@ -63,39 +151,78 @@ def compute_and_save_recommendations(
     
     # 2. Chargement des données
     log("⏳ Chargement des données depuis PostgreSQL...")
-    df_anime = pd.read_sql("SELECT anime_id, title FROM view_anime_basic", engine)
+    df_anime = pd.read_sql("SELECT anime_id, title, description, score FROM view_anime_basic", engine)
     df_genres = pd.read_sql("SELECT anime_id, genre FROM view_anime_genres", engine)
     df_tags = pd.read_sql("SELECT anime_id, tag FROM view_anime_tags", engine)
     
     log(f"✅ {len(df_anime)} animes, {len(df_genres)} genres, {len(df_tags)} tags chargés")
     
-    # 3. Préparation des features
-    log("🍳 Préparation de la soupe de features...")
-    df_features = pd.concat([
+    # 2a. Filtrage des animes avec score > 60 (AniList utilise une échelle de 0-100)
+    log("🎯 Filtrage des animes avec score > 60...")
+    df_anime_before = len(df_anime)
+    df_anime = df_anime[df_anime['score'] > 60]
+    log(f"   └─ {len(df_anime)}/{df_anime_before} animes conservés (score > 60)")
+    
+    # Filtrer aussi les genres/tags pour ne garder que ceux des animes conservés
+    anime_ids_kept = set(df_anime['anime_id'].unique())
+    df_genres = df_genres[df_genres['anime_id'].isin(anime_ids_kept)]
+    df_tags = df_tags[df_tags['anime_id'].isin(anime_ids_kept)]
+    
+    # 2b. Nettoyage des synopsis (suppression des balises HTML)
+    log("🧹 Nettoyage des synopsis...")
+    df_anime['description'] = df_anime['description'].apply(clean_html)
+    df_anime['description'] = df_anime['description'].fillna('')  # Remplacer NULL par chaîne vide
+    
+    # 3. Préparation des "soupes" SÉPARÉES (nouveau!)
+    log("🍳 Préparation des soupes SÉPARÉES (meta vs synopsis)...")
+    
+    # Soupe 1: Métadonnées (genres + tags)
+    df_features_meta = pd.concat([
         df_genres.rename(columns={'genre': 'feature_value'})[['anime_id', 'feature_value']],
         df_tags.rename(columns={'tag': 'feature_value'})[['anime_id', 'feature_value']]
     ], ignore_index=True)
     
-    # 4. Créer la "soupe" de features par anime
-    anime_soup = df_features.groupby('anime_id')['feature_value'].apply(
+    soup_meta = df_features_meta.groupby('anime_id')['feature_value'].apply(
         lambda x: ' '.join(x.astype(str))
     ).reset_index()
-    anime_soup.columns = ['anime_id', 'soup']
+    soup_meta.columns = ['anime_id', 'soup_meta']
     
-    # 5. Fusionner avec les titres
-    df_final = pd.merge(df_anime, anime_soup, on='anime_id', how='left')
-    df_final['soup'] = df_final['soup'].fillna('')
+    # 4. Fusionner tout dans un DataFrame final
+    df_final = pd.merge(df_anime, soup_meta, on='anime_id', how='left')
+    df_final['soup_meta'] = df_final['soup_meta'].fillna('')
     
-    # 6. Calcul de la matrice TF-IDF
-    log("🤖 Calcul de la matrice TF-IDF...")
-    tfidf = TfidfVectorizer(stop_words='english', min_df=3, max_features=1000)
-    tfidf_matrix = tfidf.fit_transform(df_final['soup'])
+    # 5. Vectorisation SÉPARÉE avec pondération
+    log(f"🧮 Vectorisation séparée (Meta: {WEIGHT_META*100:.0f}%, Synopsis: {WEIGHT_DESC*100:.0f}%)...")
     
-    log(f"📐 Taille matrice TF-IDF : {tfidf_matrix.shape}")
+    # Vectorizer 1: Métadonnées (genres + tags) - Simple, pas de ngrams
+    tfidf_meta = TfidfVectorizer(stop_words='english', min_df=5)
+    tfidf_matrix_meta = tfidf_meta.fit_transform(df_final['soup_meta'])
+    
+    # Vectorizer 2: Synopsis - Plus complexe avec ngrams
+    tfidf_desc = TfidfVectorizer(
+        stop_words='english',
+        ngram_range=(1, 2),
+        min_df=10,
+        max_df=0.5,
+        max_features=500
+    )
+    tfidf_matrix_desc = tfidf_desc.fit_transform(df_final['description'])
+    
+    log(f"   └─ Matrice Meta: {tfidf_matrix_meta.shape}")
+    log(f"   └─ Matrice Synopsis: {tfidf_matrix_desc.shape}")
+    
+    # 6. 🎯 COMBINAISON PONDÉRÉE (La magie!)
+    log("⚖️  Combinaison pondérée des matrices...")
+    combined_matrix = hstack([
+        tfidf_matrix_meta * WEIGHT_META,  # 80% du poids
+        tfidf_matrix_desc * WEIGHT_DESC   # 20% du poids
+    ])
+    
+    log(f"📐 Matrice combinée finale: {combined_matrix.shape}")
     
     # 7. Calcul de la similarité cosinus
     log("🔢 Calcul de la matrice de similarité...")
-    similarity_matrix = linear_kernel(tfidf_matrix, tfidf_matrix)
+    similarity_matrix = linear_kernel(combined_matrix, combined_matrix)
     
     # 8. Génération des recommandations
     log("💾 Génération des recommandations...")
@@ -110,23 +237,31 @@ def compute_and_save_recommendations(
         
         # Exclure l'anime lui-même et prendre beaucoup plus de candidats
         # pour avoir assez de diversité après le filtrage anti-doublons
-        sim_scores = sim_scores[1:top_k*5]  # On prend 5x plus de candidats
+        sim_scores = sim_scores[1:top_k*10]  # On prend 10x plus de candidats pour compenser le filtrage strict
         
-        # Filtrage anti-doublons (franchises)
+        # 🚫 Filtrage anti-doublons robuste (franchises)
         final_recommendations = []
         seen_franchises = set()
-        source_root = title[:10].lower()
-        seen_franchises.add(source_root)
+        
+        # Extraire le nom de franchise de l'anime source
+        source_franchise = extract_franchise_name(title)
+        seen_franchises.add(source_franchise)
         
         for sim_idx, score in sim_scores:
             candidate_title = df_final.iloc[sim_idx]['title']
-            candidate_root = candidate_title[:10].lower()
+            candidate_franchise = extract_franchise_name(candidate_title)
             
-            if candidate_root in seen_franchises:
+            # Vérifier si cette franchise a déjà été vue
+            if candidate_franchise in seen_franchises:
+                continue
+            
+            # Vérification supplémentaire: détecter si le nom source est DANS le candidat
+            # Ex: "Naruto" est dans "Boruto: Naruto Next Generations"
+            if source_franchise in candidate_title.lower() or candidate_franchise in title.lower():
                 continue
             
             final_recommendations.append([candidate_title, round(float(score), 3)])
-            seen_franchises.add(candidate_root)
+            seen_franchises.add(candidate_franchise)
             
             if len(final_recommendations) >= top_k:
                 break
@@ -154,7 +289,11 @@ def compute_and_save_recommendations(
     metadata = {
         "total_animes": total_animes,
         "avg_recommendations_per_anime": round(avg_recommendations, 2),
-        "tfidf_matrix_shape": f"{tfidf_matrix.shape[0]} x {tfidf_matrix.shape[1]}",
+        "combined_matrix_shape": f"{combined_matrix.shape[0]} x {combined_matrix.shape[1]}",
+        "meta_matrix_shape": f"{tfidf_matrix_meta.shape[0]} x {tfidf_matrix_meta.shape[1]}",
+        "desc_matrix_shape": f"{tfidf_matrix_desc.shape[0]} x {tfidf_matrix_desc.shape[1]}",
+        "weight_meta": WEIGHT_META,
+        "weight_desc": WEIGHT_DESC,
         "output_file": output_file,
         "file_size_mb": round(file_size_mb, 2),
         "preview": MetadataValue.md(
@@ -163,7 +302,9 @@ def compute_and_save_recommendations(
             
             - **Total animes** : {total_animes:,}
             - **Moyenne recommandations/anime** : {avg_recommendations:.1f}
-            - **Matrice TF-IDF** : {tfidf_matrix.shape[0]:,} x {tfidf_matrix.shape[1]:,}
+            - **Matrice Meta (genres+tags)** : {tfidf_matrix_meta.shape[0]:,} x {tfidf_matrix_meta.shape[1]:,} (poids: {WEIGHT_META*100:.0f}%)
+            - **Matrice Synopsis** : {tfidf_matrix_desc.shape[0]:,} x {tfidf_matrix_desc.shape[1]:,} (poids: {WEIGHT_DESC*100:.0f}%)
+            - **Matrice Combinée** : {combined_matrix.shape[0]:,} x {combined_matrix.shape[1]:,}
             - **Taille fichier** : {file_size_mb:.2f} MB
             - **Fichier** : `{output_file}`
             """

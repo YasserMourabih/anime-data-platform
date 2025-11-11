@@ -1,0 +1,291 @@
+/* Titre principal avec gradient */
+.main-title {
+    font-size: 3.5rem;
+    font-weight: 800;
+    text-align: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+}
+
+/* Sous-titre */
+.subtitle {
+    text-align: center;
+    font-size: 1.2rem;
+    color: #888;
+    margin-bottom: 2rem;
+}
+
+/* Icônes SVG */
+.icon-svg {
+    width: 24px;
+    height: 24px;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 8px;
+}
+
+.icon-svg-large {
+    width: 32px;
+    height: 32px;
+    display: inline-block;
+    vertical-align: middle;
+    margin-right: 10px;
+}
+
+/* Cards pour les animes */
+.anime-card {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 20px;
+    padding: 0;
+    color: white;
+    box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+    text-align: center;
+    min-height: 450px;
+    overflow: hidden;
+    transition: transform 0.3s ease;
+    position: relative;
+}
+
+.anime-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 15px 40px rgba(102, 126, 234, 0.4);
+}
+
+.anime-card-hidden {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    border-radius: 20px;
+    padding: 0;
+    color: white;
+    box-shadow: 0 10px 30px rgba(245, 87, 108, 0.3);
+    text-align: center;
+    min-height: 450px;
+    overflow: hidden;
+    position: relative;
+    animation: pulse-card 2s ease-in-out infinite;
+}
+
+@keyframes pulse-card {
+    0%, 100% { box-shadow: 0 10px 30px rgba(245, 87, 108, 0.3); }
+    50% { box-shadow: 0 15px 40px rgba(245, 87, 108, 0.5); }
+}
+
+.anime-card-content {
+    padding: 1.5rem;
+    position: relative;
+    z-index: 2;
+}
+
+.anime-cover {
+    width: 100%;
+    height: 280px;
+    object-fit: cover;
+    position: relative;
+    transition: transform 0.5s ease;
+}
+
+.anime-card:hover .anime-cover {
+    transform: scale(1.05);
+}
+
+.cover-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 280px;
+    background: linear-gradient(to bottom, transparent 0%, rgba(0,0,0,0.3) 100%);
+    z-index: 1;
+}
+
+.anime-cover-blur {
+    filter: blur(8px) brightness(0.7);
+    animation: mystery-pulse 3s ease-in-out infinite;
+}
+
+@keyframes mystery-pulse {
+    0%, 100% { filter: blur(8px) brightness(0.7); }
+    50% { filter: blur(10px) brightness(0.6); }
+}
+
+.result-card-correct {
+    animation: success-bounce 0.6s ease-out;
+}
+
+.result-card-wrong {
+    animation: error-shake 0.6s ease-out;
+}
+
+@keyframes success-bounce {
+    0% { transform: scale(0.8); opacity: 0; }
+    50% { transform: scale(1.05); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes error-shake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+    20%, 40%, 60%, 80% { transform: translateX(10px); }
+}
+
+.anime-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    line-height: 1.3;
+    word-wrap: break-word;
+    animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.score-display {
+    font-size: 3.5rem;
+    font-weight: 900;
+    margin: 1rem 0;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+    animation: scaleIn 0.5s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+@keyframes scaleIn {
+    from { transform: scale(0); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.score-hidden {
+    font-size: 4rem;
+    font-weight: 900;
+    margin: 1rem 0;
+    color: rgba(255,255,255,0.3);
+    animation: pulse-score 2s ease-in-out infinite;
+}
+
+@keyframes pulse-score {
+    0%, 100% { transform: scale(1); opacity: 0.3; }
+    50% { transform: scale(1.1); opacity: 0.5; }
+}
+
+/* VS Badge */
+.vs-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 450px;
+}
+
+.vs-badge {
+    font-size: 2.5rem;
+    font-weight: 900;
+    color: #FF6B6B;
+    text-align: center;
+    background: white;
+    border-radius: 50%;
+    width: 70px;
+    height: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 5px 15px rgba(255, 107, 107, 0.4);
+    z-index: 10;
+}
+
+/* Metrics personnalisées */
+.custom-metric {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 15px;
+    padding: 1.5rem;
+    text-align: center;
+    color: white;
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+    transition: all 0.3s ease;
+    animation: slideDown 0.5s ease-out;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.custom-metric:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
+}
+
+.metric-label {
+    font-size: 0.9rem;
+    opacity: 0.9;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.metric-value {
+    font-size: 2.5rem;
+    font-weight: 900;
+    animation: countUp 0.5s ease-out;
+}
+
+@keyframes countUp {
+    from { transform: scale(0.5); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.label-tag {
+    font-size: 0.85rem;
+    font-weight: 600;
+    opacity: 0.85;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+}
+
+/* Boutons stylisés - simplifié pour corriger le centrage */
+div.stButton > button {
+    font-size: 1.3rem;
+    font-weight: 700;
+    padding: 1rem 2rem;
+    border-radius: 15px;
+    border: none;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+div.stButton > button:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+
+div.stButton > button:active {
+    transform: translateY(-1px) scale(0.98);
+}
+
+.button-container {
+    animation: fadeInUp 0.5s ease-out;
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.game-buttons-appear {
+    animation: slideUpAppear 0.4s ease-out 0.2s both;
+}
+
+@keyframes slideUpAppear {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Game Over styling */
+.game-over-title {
+    font-size: 3rem;
+    font-weight: 900;
+    text-align: center;
+    color: #f5576c;
+    margin: 2rem 0;
+}
