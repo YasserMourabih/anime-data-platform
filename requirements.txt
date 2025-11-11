@@ -8,5 +8,5 @@ python-dotenv==1.2.1
 requests==2.32.5
 
 # ML dependencies (for compute script - optional for deployment)
-scikit-learn==1.6.1
-scipy==1.13.1
+# scikit-learn==1.6.1
+# scipy==1.13.1
