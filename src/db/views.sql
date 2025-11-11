@@ -3,6 +3,7 @@ CREATE OR REPLACE VIEW view_anime_basic AS
 SELECT
     anime_id,
     raw_data->'title'->>'romaji' AS title,
+    raw_data->>'description' AS description,  -- Synopsis de l'anime
     (raw_data->>'averageScore')::INTEGER AS score,
     (raw_data->>'episodes')::INTEGER AS episodes,
     raw_data->>'format' AS format,
