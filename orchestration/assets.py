@@ -10,9 +10,9 @@ Les assets sont des wrappers légers autour des fonctions métier,
 permettant une séparation claire entre orchestration et logique métier.
 """
 
-from dagster import asset, MaterializeResult, AssetExecutionContext
+from dagster import asset, MaterializeResult, AssetExecutionContext, MetadataValue
 import time
-import subprocess
+import requests
 import os
 from datetime import datetime
 from src.extract import extract_anilist_data
@@ -47,7 +47,7 @@ def raw_anilist_data(context: AssetExecutionContext) -> MaterializeResult:
 
 @asset(
     group_name="ml",
-    description="Calcule et sauvegarde les recommandations d'anime basées sur TF-IDF (genres + tags)",
+    description="Lance le script compute.py pour générer le fichier CSV.gz des recommandations",
     deps=[raw_anilist_data]  # Dépend de l'extraction
 )
 def anime_recommendations(context: AssetExecutionContext) -> MaterializeResult:
@@ -71,6 +71,101 @@ def anime_recommendations(context: AssetExecutionContext) -> MaterializeResult:
     context.log.info(f"✅ Recommandations générées en {duration:.2f}s")
     
     return MaterializeResult(metadata=metadata)
+
+@asset(
+    deps=[anime_recommendations],  # <--- Il dépend du calcul ML
+    group_name="3_deploy",
+    description="Upload le fichier CSV.gz vers GitHub Releases pour Streamlit"
+)
+def deploy_recommendations(context) -> MaterializeResult:
+    """
+    Téléverse l'artefact CSV.gz vers la Release GitHub spécifiée.
+    Cela met à jour la "source de vérité" pour l'app Streamlit.
+    """
+    context.log.info("🚀 Démarrage du déploiement vers GitHub Releases...")
+
+    # --- 1. Charger les secrets (depuis .env) ---
+    TOKEN = os.getenv("GITHUB_TOKEN")
+    REPO = os.getenv("GITHUB_REPO")
+    TAG = os.getenv("GITHUB_RELEASE_TAG")
+    FILE_PATH = "data/recommendations.csv.gz"
+    FILE_NAME = "recommendations.csv.gz"
+
+    if not all([TOKEN, REPO, TAG]):
+        context.log.error("Secrets GITHUB_TOKEN, GITHUB_REPO, ou GITHUB_RELEASE_TAG manquants.")
+        raise Exception("Variables d'environnement GitHub manquantes.")
+
+    headers = {
+        "Authorization": f"token {TOKEN}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+
+    # --- 2. Trouver l'URL d'upload pour cette Release ---
+    context.log.info(f"Recherche de la Release '{TAG}' sur '{REPO}'...")
+    release_url = f"https://api.github.com/repos/{REPO}/releases/tags/{TAG}"
+    
+    try:
+        r = requests.get(release_url, headers=headers)
+        r.raise_for_status()  # Lève une exception si erreur (404, 401...)
+        
+        release_data = r.json()
+        upload_url_template = release_data["upload_url"]
+        release_id = release_data["id"]
+
+    except requests.exceptions.RequestException as e:
+        context.log.error(f"Erreur: Release non trouvée (ou erreur API). {e}")
+        raise
+
+    # --- 3. Supprimer l'ancien fichier (robustesse) ---
+    context.log.info("Vérification des anciens artefacts...")
+    assets_url = f"https://api.github.com/repos/{REPO}/releases/{release_id}/assets"
+    
+    try:
+        r_assets = requests.get(assets_url, headers=headers)
+        r_assets.raise_for_status()
+        
+        for asset_file in r_assets.json():
+            if asset_file["name"] == FILE_NAME:
+                context.log.warning(f"Suppression de l'ancien fichier '{FILE_NAME}'...")
+                requests.delete(asset_file["url"], headers=headers)
+                break
+    except requests.exceptions.RequestException as e:
+        context.log.error(f"Impossible de lister/supprimer les anciens assets : {e}")
+        # On continue quand même, l'upload écrasera peut-être l'ancien
+
+    # --- 4. Uploader le nouveau fichier ---
+    upload_url = upload_url_template.split("{")[0] + f"?name={FILE_NAME}"
+    
+    context.log.info(f"📤 Upload de '{FILE_PATH}' vers GitHub...")
+    
+    try:
+        with open(FILE_PATH, 'rb') as f:
+            data = f.read()
+        
+        headers_upload = headers.copy()
+        headers_upload["Content-Type"] = "application/gzip"
+        
+        r_upload = requests.post(upload_url, headers=headers_upload, data=data)
+        r_upload.raise_for_status()
+        
+        download_url = r_upload.json().get("browser_download_url", "N/A")
+    
+    except FileNotFoundError:
+        context.log.error(f"Fichier local non trouvé : {FILE_PATH}. L'asset 'anime_recommendations' a-t-il bien tourné ?")
+        raise
+    except requests.exceptions.RequestException as e:
+        context.log.error(f"Upload échoué: {e.response.json()}")
+        raise
+
+    context.log.info(f"✅ Déploiement réussi ! URL: {download_url}")
+
+    return MaterializeResult(
+        metadata={
+            "status": "deployed_to_github_release",
+            "download_url": MetadataValue.url(download_url),
+            "release_tag": TAG
+        }
+    )
 
 
 # @asset(
