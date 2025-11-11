@@ -2,7 +2,7 @@
 
 Plateforme de recommandation d'animes basée sur l'apprentissage automatique (TF-IDF), avec extraction automatisée des données depuis [AniList](https://anilist.co/) et orchestration via Dagster.
 
-## 📋 Fonctionnalités
+## Fonctionnalités
 
 - **🔄 Pipeline d'extraction** : Récupération automatisée de 25 000+ animes depuis l'API AniList
 - **🧠 Système de recommandations** : Algorithme TF-IDF pondéré (genres, tags, synopsis)
@@ -10,7 +10,7 @@ Plateforme de recommandation d'animes basée sur l'apprentissage automatique (TF
 - **⚙️ Orchestration Dagster** : Pipeline automatisé avec scheduling hebdomadaire
 - **💾 Base PostgreSQL** : Stockage structuré avec vues SQL optimisées
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 anime-data-platform/
@@ -38,7 +38,7 @@ anime-data-platform/
 
 ```
 
-## 🚀 Installation
+## Installation
 
 ### Prérequis
 
@@ -78,7 +78,7 @@ psql -h <DB_HOST> -U <DB_USER> -d <DB_NAME> -f src/db/schema.sql
 psql -h <DB_HOST> -U <DB_USER> -d <DB_NAME> -f src/db/views.sql
 ```
 
-## 📊 Utilisation
+## Utilisation
 
 ### Extraction des données AniList
 
@@ -106,7 +106,7 @@ dagster dev -f orchestration/definitions.py
 
 Puis ouvrir [http://localhost:3000](http://localhost:3000)
 
-## 🎯 Algorithme de Recommandation
+## Algorithme de Recommandation
 
 Le système utilise une approche hybride basée sur **TF-IDF** avec pondération :
 
@@ -119,7 +119,7 @@ Le système utilise une approche hybride basée sur **TF-IDF** avec pondération
 
 **Résultat** : ~10 recommandations par anime, avec un score de similarité de 0 à 1
 
-## 🎮 Jeu Higher or Lower
+## Jeu Higher or Lower
 
 Interface interactive permettant de deviner si un anime a un score plus haut ou plus bas qu'un autre.
 
@@ -129,7 +129,7 @@ Interface interactive permettant de deviner si un anime a un score plus haut ou 
 - 📊 Tracking du score et des séries
 - 🎨 Design moderne avec gradients
 
-## 🔧 Technologies
+##� Technologies
 
 - **Backend** : Python, PostgreSQL
 - **ML** : Scikit-learn (TF-IDF, Cosine Similarity)
@@ -138,7 +138,7 @@ Interface interactive permettant de deviner si un anime a un score plus haut ou 
 - **API** : AniList GraphQL
 - **Cloud** : Neon (PostgreSQL serverless)
 
-## 📝 TODO
+## TODO
 
 Voir [TODO.md](TODO.md) pour la roadmap complète.
 
