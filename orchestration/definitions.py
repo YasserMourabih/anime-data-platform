@@ -6,7 +6,7 @@ project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
 
-from dagster import Definitions, load_assets_from_modules
+from dagster import Definitions, load_assets_from_modules, define_asset_job, ScheduleDefinition
 import logging
 
 # On importe nos assets
@@ -14,6 +14,17 @@ from orchestration import assets
 
 # On charge tous les assets définis dans le module assets.py
 all_assets = load_assets_from_modules([assets])
+
+# On définit le Job : "Mettre à jour toute la plateforme"
+# selection="*" signifie "prends tous les assets disponibles"
+update_all_job = define_asset_job(name="update_anime_platform", selection="*")
+
+# On définit le Schedule : "Lance ce job tous les dimanches à 3h du mat"
+# cron_schedule="0 3 * * 0" est la syntaxe standard CRON (Minute Heure JourMois Mois JourSemaine)
+weekly_update_schedule = ScheduleDefinition(
+    job=update_all_job,
+    cron_schedule="0 3 * * 0", # Dimanche à 03:00
+)
 
 def configure_logging():
     # 1. Récupérer le logger racine de TON application (pas celui de Dagster)
@@ -38,5 +49,7 @@ def configure_logging():
 configure_logging()
 
 defs = Definitions(
-    assets=all_assets
+    assets=all_assets,
+    jobs=[update_all_job],
+    schedules=[weekly_update_schedule]
     )
