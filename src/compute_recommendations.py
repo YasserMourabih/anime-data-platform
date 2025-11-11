@@ -21,11 +21,16 @@ import os
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
+from scipy.sparse import hstack  # Combinaison pondérée des matrices
 from dotenv import load_dotenv
 import sqlalchemy
 from dagster import MetadataValue
 
 load_dotenv()
+
+# 🎛️ Paramètres de pondération
+WEIGHT_META = 0.7  # 70% du poids pour les tags/genres (signal fiable)
+WEIGHT_DESC = 0.3  # 30% du poids pour le synopsis (bonus contexte)
 
 
 def clean_html(raw_html):
@@ -158,54 +163,66 @@ def compute_and_save_recommendations(
     df_anime = df_anime[df_anime['score'] > 60]
     log(f"   └─ {len(df_anime)}/{df_anime_before} animes conservés (score > 60)")
     
+    # Filtrer aussi les genres/tags pour ne garder que ceux des animes conservés
+    anime_ids_kept = set(df_anime['anime_id'].unique())
+    df_genres = df_genres[df_genres['anime_id'].isin(anime_ids_kept)]
+    df_tags = df_tags[df_tags['anime_id'].isin(anime_ids_kept)]
+    
     # 2b. Nettoyage des synopsis (suppression des balises HTML)
     log("🧹 Nettoyage des synopsis...")
     df_anime['description'] = df_anime['description'].apply(clean_html)
     df_anime['description'] = df_anime['description'].fillna('')  # Remplacer NULL par chaîne vide
     
-    # 3. Préparation des features
-    log("🍳 Préparation de la soupe de features...")
-    df_features = pd.concat([
+    # 3. Préparation des "soupes" SÉPARÉES (nouveau!)
+    log("🍳 Préparation des soupes SÉPARÉES (meta vs synopsis)...")
+    
+    # Soupe 1: Métadonnées (genres + tags)
+    df_features_meta = pd.concat([
         df_genres.rename(columns={'genre': 'feature_value'})[['anime_id', 'feature_value']],
         df_tags.rename(columns={'tag': 'feature_value'})[['anime_id', 'feature_value']]
     ], ignore_index=True)
     
-    # 4. Créer la "soupe" de features par anime
-    anime_soup = df_features.groupby('anime_id')['feature_value'].apply(
+    soup_meta = df_features_meta.groupby('anime_id')['feature_value'].apply(
         lambda x: ' '.join(x.astype(str))
     ).reset_index()
-    anime_soup.columns = ['anime_id', 'soup']
+    soup_meta.columns = ['anime_id', 'soup_meta']
     
-    # 5. Fusionner avec les titres et descriptions
-    df_final = pd.merge(df_anime, anime_soup, on='anime_id', how='left')
-    df_final['soup'] = df_final['soup'].fillna('')
-
-    # 5b. ⭐ AJOUT DES SYNOPSIS : On donne un poids x1 car ils sont riches en mots-clés
-    synopsis_weight = 1
-    tags_genre_weight = 2
-    log(f"📝 Intégration des synopsis (poids x{synopsis_weight} et genres x{tags_genre_weight})...")
-    df_final['soup'] = (
-        (df_final['soup'] + " ") * tags_genre_weight + 
-        (df_final['description'] + " ") * synopsis_weight  # Répétition x1 pour garder le poids
-    )
-    df_final['soup'] = df_final['soup'].str.strip()  # Nettoyer les espaces
+    # 4. Fusionner tout dans un DataFrame final
+    df_final = pd.merge(df_anime, soup_meta, on='anime_id', how='left')
+    df_final['soup_meta'] = df_final['soup_meta'].fillna('')
     
-    # 6. Calcul de la matrice TF-IDF
-    log("🤖 Calcul de la matrice TF-IDF...")
-    tfidf = TfidfVectorizer(
+    # 5. Vectorisation SÉPARÉE avec pondération
+    log(f"🧮 Vectorisation séparée (Meta: {WEIGHT_META*100:.0f}%, Synopsis: {WEIGHT_DESC*100:.0f}%)...")
+    
+    # Vectorizer 1: Métadonnées (genres + tags) - Simple, pas de ngrams
+    tfidf_meta = TfidfVectorizer(stop_words='english', min_df=5)
+    tfidf_matrix_meta = tfidf_meta.fit_transform(df_final['soup_meta'])
+    
+    # Vectorizer 2: Synopsis - Plus complexe avec ngrams
+    tfidf_desc = TfidfVectorizer(
         stop_words='english',
         ngram_range=(1, 2),
         min_df=10,
         max_df=0.5,
-        max_features=1300
-        )
-    tfidf_matrix = tfidf.fit_transform(df_final['soup'])
+        max_features=500
+    )
+    tfidf_matrix_desc = tfidf_desc.fit_transform(df_final['description'])
     
-    log(f"📐 Taille matrice TF-IDF : {tfidf_matrix.shape}")
+    log(f"   └─ Matrice Meta: {tfidf_matrix_meta.shape}")
+    log(f"   └─ Matrice Synopsis: {tfidf_matrix_desc.shape}")
+    
+    # 6. 🎯 COMBINAISON PONDÉRÉE (La magie!)
+    log("⚖️  Combinaison pondérée des matrices...")
+    combined_matrix = hstack([
+        tfidf_matrix_meta * WEIGHT_META,  # 80% du poids
+        tfidf_matrix_desc * WEIGHT_DESC   # 20% du poids
+    ])
+    
+    log(f"📐 Matrice combinée finale: {combined_matrix.shape}")
     
     # 7. Calcul de la similarité cosinus
     log("🔢 Calcul de la matrice de similarité...")
-    similarity_matrix = linear_kernel(tfidf_matrix, tfidf_matrix)
+    similarity_matrix = linear_kernel(combined_matrix, combined_matrix)
     
     # 8. Génération des recommandations
     log("💾 Génération des recommandations...")
@@ -272,7 +289,11 @@ def compute_and_save_recommendations(
     metadata = {
         "total_animes": total_animes,
         "avg_recommendations_per_anime": round(avg_recommendations, 2),
-        "tfidf_matrix_shape": f"{tfidf_matrix.shape[0]} x {tfidf_matrix.shape[1]}",
+        "combined_matrix_shape": f"{combined_matrix.shape[0]} x {combined_matrix.shape[1]}",
+        "meta_matrix_shape": f"{tfidf_matrix_meta.shape[0]} x {tfidf_matrix_meta.shape[1]}",
+        "desc_matrix_shape": f"{tfidf_matrix_desc.shape[0]} x {tfidf_matrix_desc.shape[1]}",
+        "weight_meta": WEIGHT_META,
+        "weight_desc": WEIGHT_DESC,
         "output_file": output_file,
         "file_size_mb": round(file_size_mb, 2),
         "preview": MetadataValue.md(
@@ -281,7 +302,9 @@ def compute_and_save_recommendations(
             
             - **Total animes** : {total_animes:,}
             - **Moyenne recommandations/anime** : {avg_recommendations:.1f}
-            - **Matrice TF-IDF** : {tfidf_matrix.shape[0]:,} x {tfidf_matrix.shape[1]:,}
+            - **Matrice Meta (genres+tags)** : {tfidf_matrix_meta.shape[0]:,} x {tfidf_matrix_meta.shape[1]:,} (poids: {WEIGHT_META*100:.0f}%)
+            - **Matrice Synopsis** : {tfidf_matrix_desc.shape[0]:,} x {tfidf_matrix_desc.shape[1]:,} (poids: {WEIGHT_DESC*100:.0f}%)
+            - **Matrice Combinée** : {combined_matrix.shape[0]:,} x {combined_matrix.shape[1]:,}
             - **Taille fichier** : {file_size_mb:.2f} MB
             - **Fichier** : `{output_file}`
             """

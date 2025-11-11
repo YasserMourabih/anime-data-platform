@@ -5,43 +5,57 @@ Requêtes GraphQL et SQL utilisées dans le pipeline d'extraction.
 # --- GraphQL Queries ---
 ANILIST_FETCH_PAGE_QUERY = '''
 query ($page: Int, $perPage: Int) {
-  Page (page: $page, perPage: $perPage) {
+  Page(page: $page, perPage: $perPage) {
     pageInfo {
       hasNextPage
-      lastPage
     }
-    media (type: ANIME, sort: POPULARITY_DESC) {
+    media(type: ANIME, sort: POPULARITY_DESC) {
       id
       title {
         romaji
         english
       }
+      averageScore
+      popularity
+      format
+      status
       startDate {
         year
         month
-        day
       }
-      averageScore
+      episodes
       genres
       tags {
         name
         rank
-        isMediaSpoiler 
+        isMediaSpoiler
       }
-      episodes
-      format
-      status
       description(asHtml: false)
-      characters(sort: ROLE, role: MAIN, perPage: 5) { 
+      studios(isMain: true) {
         nodes {
-          name {
-            full
+          name
+        }
+      }
+      coverImage {
+        large
+        color
+      }
+      relations {
+        edges {
+          relationType
+          node {
+            id
+            title {
+              romaji
+            }
           }
         }
       }
-      studios(isMain: true) {
+      recommendations(sort: RATING_DESC, perPage: 5) {
         nodes {
-           name
+          mediaRecommendation {
+            id
+          }
         }
       }
     }
