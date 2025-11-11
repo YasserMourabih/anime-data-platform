@@ -9,8 +9,15 @@ import os
 import sqlalchemy
 from dotenv import load_dotenv
 from pathlib import Path
+import sys
 
 load_dotenv()
+
+# Ajouter le dossier parent au path pour importer config
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from config import logger
+
+logger.info("🎮 Chargement de la page Higher or Lower")
 
 
 # ============================================================================
@@ -20,6 +27,7 @@ load_dotenv()
 @st.cache_data
 def load_game_data(top_k=500):
     """Charge les animes populaires pour le jeu."""
+    logger.info(f"📊 Chargement des {top_k} animes les plus populaires pour le jeu")
     db_url = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASS')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}?sslmode=require"
     engine = sqlalchemy.create_engine(db_url)
     
@@ -35,7 +43,9 @@ def load_game_data(top_k=500):
     """
     
     df = pd.read_sql(query, engine)
-    return df.drop_duplicates(subset=['title']).reset_index(drop=True)
+    df = df.drop_duplicates(subset=['title']).reset_index(drop=True)
+    logger.info(f"✅ {len(df)} animes chargés pour le jeu")
+    return df
 
 
 # ============================================================================
@@ -44,6 +54,7 @@ def load_game_data(top_k=500):
 
 def init_game():
     """Initialise un nouveau jeu."""
+    logger.info("🎮 Initialisation d'une nouvelle partie")
     df = st.session_state.df_animes
     st.session_state.score = 0
     st.session_state.streak = 0
@@ -80,7 +91,9 @@ def check_answer(guess_is_higher):
         st.session_state.streak += 1
         if st.session_state.streak > st.session_state.best_streak:
             st.session_state.best_streak = st.session_state.streak
+        logger.info(f"✅ Bonne réponse ! Score: {st.session_state.score}, Streak: {st.session_state.streak}")
     else:
+        logger.info(f"❌ Game Over ! Score final: {st.session_state.score}, Meilleur streak: {st.session_state.best_streak}")
         st.session_state.game_over = True
         st.session_state.streak = 0
 
@@ -91,7 +104,13 @@ def check_answer(guess_is_higher):
 
 def load_css():
     """Charge le fichier CSS externe."""
-    css_file = Path(__file__).parent / "higher_lower_styles.css"
+    # Global styles
+    global_css = Path(__file__).parent.parent / "styles" / "global_styles.css"
+    with open(global_css) as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+    
+    # Higher or Lower styles
+    css_file = Path(__file__).parent.parent / "styles" / "higher_lower_styles.css"
     with open(css_file) as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
@@ -436,5 +455,61 @@ def show():
             st.rerun()
 
 
+# ============================================================================
+# SIDEBAR
+# ============================================================================
+
+def render_sidebar():
+    """Affiche la sidebar personnalisée."""
+    with st.sidebar:
+        # Logo/Header
+        st.markdown("""
+        <div class="sidebar-logo">
+            <svg xmlns="http://www.w3.org/2000/svg" width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+                <polyline points="17 2 12 7 7 2"></polyline>
+                <circle cx="8" cy="14" r="1"></circle>
+                <circle cx="16" cy="14" r="1"></circle>
+            </svg>
+            <div class="sidebar-logo-title">Higher or Lower</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Navigation
+        st.markdown('<div class="sidebar-section-title">Navigation</div>', unsafe_allow_html=True)
+        st.page_link("app.py", label="Accueil")
+        st.page_link("pages/2_anime_recommender.py", label="Recommender")
+        st.page_link("pages/1_higher_lower.py", label="Higher or Lower")
+        
+        st.markdown("---")
+        
+        # Stats actuelles
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-section-title">Session actuelle</div>', unsafe_allow_html=True)
+        score = st.session_state.get('score', 0)
+        streak = st.session_state.get('streak', 0)
+        best = st.session_state.get('best_streak', 0)
+        st.markdown(f"**Score** : {score}")
+        st.markdown(f"**Streak** : {streak}")
+        st.markdown(f"**Meilleur** : {best}")
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Règles du jeu
+        st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+        st.markdown('<div class="sidebar-section-title">Comment jouer</div>', unsafe_allow_html=True)
+        st.markdown("1. Compare deux animes")
+        st.markdown("2. Devine lequel a le meilleur score")
+        st.markdown("3. Enchaîne les bonnes réponses")
+        st.markdown("4. Bats ton record")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
 if __name__ == "__main__":
+    render_sidebar()
     show()
