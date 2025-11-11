@@ -12,7 +12,7 @@ st.set_page_config(page_title="Anime Recommender", page_icon="🎯")
 
 logger.info("🎯 Chargement de la page Anime Recommender")
 
-CSV_URL = "https://github.com/YasserMourabih/anime-data-platform/releases/download/v1.0.0-data/recommendations.csv.gz"
+PARQUET_URL = "https://github.com/YasserMourabih/anime-data-platform/releases/download/v1.0.0-data/recommendations.parquet"
 
 # --- LOAD CSS ---
 def load_css(file_name):
@@ -26,9 +26,9 @@ load_css("recommender_styles.css")
 
 @st.cache_data
 def load_recommendations():
-    """Charge les recommandations depuis le fichier CSV (ultra-rapide)."""
-    logger.info(f"📂 Chargement des recommandations depuis {CSV_URL}")
-    df_recos = pd.read_csv(CSV_URL)
+    """Charge les recommandations depuis le fichier Parquet (ultra-rapide)."""
+    logger.info(f"📂 Chargement des recommandations depuis {PARQUET_URL}")
+    df_recos = pd.read_parquet(PARQUET_URL)
     all_titles = sorted(df_recos['source_title'].unique())
     logger.info(f"✅ {len(all_titles)} animes et {len(df_recos)} recommandations chargées")
     return df_recos, all_titles
@@ -93,7 +93,7 @@ try:
             st.warning("Veuillez sélectionner un anime d'abord")
 
 except FileNotFoundError:
-    logger.error(f"❌ Fichier de recommandations introuvable : {CSV_URL}")
+    logger.error(f"❌ Fichier de recommandations introuvable : {PARQUET_URL}")
     st.error("Fichier de recommandations introuvable. Assurez-vous d'avoir lancé le script de calcul.")
 except Exception as e:
     logger.error(f"❌ Erreur lors du chargement des recommandations : {e}")

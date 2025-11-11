@@ -277,14 +277,15 @@ def compute_and_save_recommendations(
     log("📊 Conversion en DataFrame...")
     df_recos = pd.DataFrame(reco_list, columns=['source_title', 'reco_title', 'score'])
     
-# 10. Sauvegarde au format CSV Gzip (au lieu de Parquet)
-    output_file = "data/recommendations.csv.gz"  # <--- Changer le nom
+# 10. Sauvegarde au format Parquet optimisé
+    log("💾 Sauvegarde au format Parquet optimisé...")
+    output_file = "data/recommendations.parquet"  # <--- Changer le nom
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
-    log(f"📦 Sauvegarde au format CSV Gzip : {output_file}...")
+    log(f"📦 Sauvegarde au format Parquet : {output_file}...")
 
-    df_recos.to_csv(output_file, index=False, compression='gzip') # <--- Changer la fonction
+    df_recos.to_parquet(output_file, index=False)
 
-    log("✅ Fichier CSV Gzip sauvegardé avec succès !")
+    log("✅ Fichier Parquet sauvegardé avec succès !")
 
     # 11. Calcul des métadonnées pour Dagster
     # total_animes = df_recos['source_title'].nunique()
@@ -308,14 +309,14 @@ def compute_and_save_recommendations(
         "weight_desc": WEIGHT_DESC,
         "output_file": output_file,
         "file_size_mb": round(file_size_mb, 2),
-        "format": "CSV (gzip compression)",  # <--- MODIFIÉ
+        "format": "Parquet",  # <--- MODIFIÉ
         "preview": MetadataValue.md(
             f"""
             ## Recommandations générées ✅
             
             - **Total animes** : {total_animes:,}
             - **Total recommandations** : {total_recommendations:,}
-            - **Format** : CSV (gzip compression)  
+            - **Format** : Parquet
             - **Taille fichier** : {file_size_mb:.2f} MB
             - **Fichier** : `{output_file}`
             """

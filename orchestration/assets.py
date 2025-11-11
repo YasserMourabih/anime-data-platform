@@ -47,7 +47,7 @@ def raw_anilist_data(context: AssetExecutionContext) -> MaterializeResult:
 
 @asset(
     group_name="ml",
-    description="Lance le script compute.py pour générer le fichier CSV.gz des recommandations",
+    description="Lance le script compute.py pour générer le fichier Parquet des recommandations",
     deps=[raw_anilist_data]  # Dépend de l'extraction
 )
 def anime_recommendations(context: AssetExecutionContext) -> MaterializeResult:
@@ -75,11 +75,11 @@ def anime_recommendations(context: AssetExecutionContext) -> MaterializeResult:
 @asset(
     deps=[anime_recommendations],  # <--- Il dépend du calcul ML
     group_name="3_deploy",
-    description="Upload le fichier CSV.gz vers GitHub Releases pour Streamlit"
+    description="Upload le fichier Parquet vers GitHub Releases pour Streamlit"
 )
 def deploy_recommendations(context) -> MaterializeResult:
     """
-    Téléverse l'artefact CSV.gz vers la Release GitHub spécifiée.
+    Téléverse l'artefact Parquet vers la Release GitHub spécifiée.
     Cela met à jour la "source de vérité" pour l'app Streamlit.
     """
     context.log.info("🚀 Démarrage du déploiement vers GitHub Releases...")
@@ -88,8 +88,8 @@ def deploy_recommendations(context) -> MaterializeResult:
     TOKEN = os.getenv("GITHUB_TOKEN")
     REPO = os.getenv("GITHUB_REPO")
     TAG = os.getenv("GITHUB_RELEASE_TAG")
-    FILE_PATH = "data/recommendations.csv.gz"
-    FILE_NAME = "recommendations.csv.gz"
+    FILE_PATH = "data/recommendations.parquet"
+    FILE_NAME = "recommendations.parquet"
 
     if not all([TOKEN, REPO, TAG]):
         context.log.error("Secrets GITHUB_TOKEN, GITHUB_REPO, ou GITHUB_RELEASE_TAG manquants.")
