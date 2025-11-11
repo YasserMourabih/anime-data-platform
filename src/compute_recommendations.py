@@ -87,11 +87,17 @@ def compute_and_save_recommendations(
     
     # 2. Chargement des données
     log("⏳ Chargement des données depuis PostgreSQL...")
-    df_anime = pd.read_sql("SELECT anime_id, title, description FROM view_anime_basic", engine)
+    df_anime = pd.read_sql("SELECT anime_id, title, description, score FROM view_anime_basic", engine)
     df_genres = pd.read_sql("SELECT anime_id, genre FROM view_anime_genres", engine)
     df_tags = pd.read_sql("SELECT anime_id, tag FROM view_anime_tags", engine)
     
     log(f"✅ {len(df_anime)} animes, {len(df_genres)} genres, {len(df_tags)} tags chargés")
+    
+    # 2a. Filtrage des animes avec score > 60 (AniList utilise une échelle de 0-100)
+    log("🎯 Filtrage des animes avec score > 60...")
+    df_anime_before = len(df_anime)
+    df_anime = df_anime[df_anime['score'] > 60]
+    log(f"   └─ {len(df_anime)}/{df_anime_before} animes conservés (score > 60)")
     
     # 2b. Nettoyage des synopsis (suppression des balises HTML)
     log("🧹 Nettoyage des synopsis...")
@@ -119,13 +125,19 @@ def compute_and_save_recommendations(
     log("📝 Intégration des synopsis (poids x3)...")
     df_final['soup'] = (
         df_final['soup'] + " " + 
-        (df_final['description'] + " ") * 3  # Répétition x3 pour augmenter le poids
+        (df_final['description'] + " ")  # Répétition x3 pour augmenter le poids
     )
     df_final['soup'] = df_final['soup'].str.strip()  # Nettoyer les espaces
     
     # 6. Calcul de la matrice TF-IDF
     log("🤖 Calcul de la matrice TF-IDF...")
-    tfidf = TfidfVectorizer(stop_words='english', min_df=3, max_features=1000)
+    tfidf = TfidfVectorizer(
+        stop_words='english',
+        ngram_range=(1, 2),
+        min_df=10,
+        max_df=0.5,
+        max_features=1000
+        )
     tfidf_matrix = tfidf.fit_transform(df_final['soup'])
     
     log(f"📐 Taille matrice TF-IDF : {tfidf_matrix.shape}")
