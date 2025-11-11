@@ -51,6 +51,65 @@ def clean_html(raw_html):
     return text.strip()
 
 
+def extract_franchise_name(title):
+    """
+    Extrait le nom de base d'une franchise en supprimant les variations.
+    
+    Exemples:
+        "Naruto" → "naruto"
+        "Naruto: Shippuden" → "naruto"
+        "Boruto: Naruto Next Generations" → "naruto"  (détecte "naruto" dans le titre)
+        "One Piece" → "one piece"
+        "One Piece Film: Red" → "one piece"
+        "Attack on Titan Season 2" → "attack on titan"
+    
+    Args:
+        title: Titre de l'anime
+        
+    Returns:
+        str: Nom de franchise normalisé
+    """
+    if not title:
+        return ''
+    
+    title_lower = title.lower()
+    
+    # Patterns à supprimer (séquelles, saisons, films, OVA, etc.)
+    patterns_to_remove = [
+        r'\s*:\s*.*',           # Tout après les deux-points (ex: "Naruto: Shippuden" → "Naruto")
+        r'\s+season\s+\d+.*',   # Season + numéro
+        r'\s+\d+(st|nd|rd|th)\s+season.*',
+        r'\s+part\s+\d+.*',     # Part + numéro
+        r'\s+movie.*',          # Movie
+        r'\s+film.*',           # Film
+        r'\s+ova.*',            # OVA
+        r'\s+ona.*',            # ONA
+        r'\s+special.*',        # Special
+        r'\s+recap.*',          # Recap
+        r'\s+\(.*\)$',          # Tout entre parenthèses à la fin
+        r'\s+\d+$',             # Numéro seul à la fin (ex: "Naruto 2")
+        r'\s+ii$',              # Chiffres romains
+        r'\s+iii$',
+        r'\s+iv$',
+        r'\s+v$',
+    ]
+    
+    # Appliquer tous les patterns
+    franchise_name = title_lower
+    for pattern in patterns_to_remove:
+        franchise_name = re.sub(pattern, '', franchise_name, flags=re.IGNORECASE)
+    
+    # Nettoyer les espaces multiples et trim
+    franchise_name = re.sub(r'\s+', ' ', franchise_name).strip()
+    
+    # Si c'est trop court après nettoyage, garder au moins 3 premiers mots
+    if len(franchise_name) < 3 and title_lower:
+        words = title_lower.split()
+        franchise_name = ' '.join(words[:min(3, len(words))])
+    
+    return franchise_name
+
+
 def compute_and_save_recommendations(
     output_file: str = "data/recommendations.json",
     top_k: int = 10,
@@ -120,12 +179,14 @@ def compute_and_save_recommendations(
     # 5. Fusionner avec les titres et descriptions
     df_final = pd.merge(df_anime, anime_soup, on='anime_id', how='left')
     df_final['soup'] = df_final['soup'].fillna('')
-    
-    # 5b. ⭐ AJOUT DES SYNOPSIS : On donne un poids x3 car ils sont riches en mots-clés
-    log("📝 Intégration des synopsis (poids x3)...")
+
+    # 5b. ⭐ AJOUT DES SYNOPSIS : On donne un poids x1 car ils sont riches en mots-clés
+    synopsis_weight = 1
+    tags_genre_weight = 2
+    log(f"📝 Intégration des synopsis (poids x{synopsis_weight} et genres x{tags_genre_weight})...")
     df_final['soup'] = (
-        df_final['soup'] + " " + 
-        (df_final['description'] + " ")  # Répétition x3 pour augmenter le poids
+        (df_final['soup'] + " ") * tags_genre_weight + 
+        (df_final['description'] + " ") * synopsis_weight  # Répétition x1 pour garder le poids
     )
     df_final['soup'] = df_final['soup'].str.strip()  # Nettoyer les espaces
     
@@ -136,7 +197,7 @@ def compute_and_save_recommendations(
         ngram_range=(1, 2),
         min_df=10,
         max_df=0.5,
-        max_features=1000
+        max_features=1300
         )
     tfidf_matrix = tfidf.fit_transform(df_final['soup'])
     
@@ -159,23 +220,31 @@ def compute_and_save_recommendations(
         
         # Exclure l'anime lui-même et prendre beaucoup plus de candidats
         # pour avoir assez de diversité après le filtrage anti-doublons
-        sim_scores = sim_scores[1:top_k*5]  # On prend 5x plus de candidats
+        sim_scores = sim_scores[1:top_k*10]  # On prend 10x plus de candidats pour compenser le filtrage strict
         
-        # Filtrage anti-doublons (franchises)
+        # 🚫 Filtrage anti-doublons robuste (franchises)
         final_recommendations = []
         seen_franchises = set()
-        source_root = title[:10].lower()
-        seen_franchises.add(source_root)
+        
+        # Extraire le nom de franchise de l'anime source
+        source_franchise = extract_franchise_name(title)
+        seen_franchises.add(source_franchise)
         
         for sim_idx, score in sim_scores:
             candidate_title = df_final.iloc[sim_idx]['title']
-            candidate_root = candidate_title[:10].lower()
+            candidate_franchise = extract_franchise_name(candidate_title)
             
-            if candidate_root in seen_franchises:
+            # Vérifier si cette franchise a déjà été vue
+            if candidate_franchise in seen_franchises:
+                continue
+            
+            # Vérification supplémentaire: détecter si le nom source est DANS le candidat
+            # Ex: "Naruto" est dans "Boruto: Naruto Next Generations"
+            if source_franchise in candidate_title.lower() or candidate_franchise in title.lower():
                 continue
             
             final_recommendations.append([candidate_title, round(float(score), 3)])
-            seen_franchises.add(candidate_root)
+            seen_franchises.add(candidate_franchise)
             
             if len(final_recommendations) >= top_k:
                 break
