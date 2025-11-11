@@ -38,5 +38,6 @@ TODO.md
 
 # Data (optionnel)
 # data/
+data/*.parquet
 # *.csv
 # *.json
