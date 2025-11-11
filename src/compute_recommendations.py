@@ -18,6 +18,7 @@ Cette fonction peut être appelée :
 import pandas as pd
 import json
 import os
+import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 from dotenv import load_dotenv
@@ -25,6 +26,29 @@ import sqlalchemy
 from dagster import MetadataValue
 
 load_dotenv()
+
+
+def clean_html(raw_html):
+    """
+    Nettoie les balises HTML d'une chaîne de caractères.
+    
+    Args:
+        raw_html: Texte potentiellement avec des balises HTML
+        
+    Returns:
+        str: Texte nettoyé sans balises HTML
+    """
+    if not raw_html:
+        return ''
+    
+    # Supprimer les balises HTML
+    cleanr = re.compile('<.*?>')
+    text = re.sub(cleanr, '', raw_html)
+    
+    # Nettoyer les espaces multiples
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
 
 
 def compute_and_save_recommendations(
@@ -63,11 +87,16 @@ def compute_and_save_recommendations(
     
     # 2. Chargement des données
     log("⏳ Chargement des données depuis PostgreSQL...")
-    df_anime = pd.read_sql("SELECT anime_id, title FROM view_anime_basic", engine)
+    df_anime = pd.read_sql("SELECT anime_id, title, description FROM view_anime_basic", engine)
     df_genres = pd.read_sql("SELECT anime_id, genre FROM view_anime_genres", engine)
     df_tags = pd.read_sql("SELECT anime_id, tag FROM view_anime_tags", engine)
     
     log(f"✅ {len(df_anime)} animes, {len(df_genres)} genres, {len(df_tags)} tags chargés")
+    
+    # 2b. Nettoyage des synopsis (suppression des balises HTML)
+    log("🧹 Nettoyage des synopsis...")
+    df_anime['description'] = df_anime['description'].apply(clean_html)
+    df_anime['description'] = df_anime['description'].fillna('')  # Remplacer NULL par chaîne vide
     
     # 3. Préparation des features
     log("🍳 Préparation de la soupe de features...")
@@ -82,9 +111,17 @@ def compute_and_save_recommendations(
     ).reset_index()
     anime_soup.columns = ['anime_id', 'soup']
     
-    # 5. Fusionner avec les titres
+    # 5. Fusionner avec les titres et descriptions
     df_final = pd.merge(df_anime, anime_soup, on='anime_id', how='left')
     df_final['soup'] = df_final['soup'].fillna('')
+    
+    # 5b. ⭐ AJOUT DES SYNOPSIS : On donne un poids x3 car ils sont riches en mots-clés
+    log("📝 Intégration des synopsis (poids x3)...")
+    df_final['soup'] = (
+        df_final['soup'] + " " + 
+        (df_final['description'] + " ") * 3  # Répétition x3 pour augmenter le poids
+    )
+    df_final['soup'] = df_final['soup'].str.strip()  # Nettoyer les espaces
     
     # 6. Calcul de la matrice TF-IDF
     log("🤖 Calcul de la matrice TF-IDF...")
