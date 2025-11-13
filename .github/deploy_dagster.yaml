@@ -1,0 +1,94 @@
+# .github/workflows/deploy_dagster.yml
+
+name: CI/CD - Deploy Dagster Pipeline
+
+# Déclencheur : Se lance à chaque fois que tu push sur la branche 'main'
+on:
+  push:
+    branches:
+      - main
+
+# Variables d'environnement pour tout le workflow
+env:
+  # NOM DE L'IMAGE DOCKER
+  # ghcr.io / [TON_USERNAME_GITHUB] / [TON_REPO] :latest
+  # (github.repository est une variable magique : YasserMourabih/anime-data-platform)
+  IMAGE_NAME: ghcr.io/${{ github.repository }}:latest
+
+jobs:
+  # --- TÂCHE 1: CONSTRUIRE L'IMAGE ET LA POUSSER SUR LE REGISTRE ---
+  build-and-push-image:
+    runs-on: ubuntu-latest # Cette tâche tourne sur un serveur GitHub
+    permissions:
+      contents: read
+      packages: write # Nécessaire pour pousser l'image sur GHCR
+
+    steps:
+      - name: 1. Cloner le dépôt
+        uses: actions/checkout@v3
+
+      - name: 2. Se connecter au Registre de Conteneurs GitHub (GHCR)
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }} # Ton nom d'utilisateur
+          password: ${{ secrets.GITHUB_TOKEN }} # GITHUB_TOKEN est un secret auto-généré
+
+      - name: 3. Construire et Pousser l'image Docker
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile # Chemin vers ton Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_NAME }}
+          # On utilise le bon fichier requirements pour Dagster
+          build-args: |
+            DAGSTER_REQUIREMENTS_FILE=requirements_dagster.txt
+
+  # --- TÂCHE 2: DÉPLOYER L'IMAGE SUR LE SERVEUR ---
+  deploy-to-droplet:
+    needs: build-and-push-image # Ne se lance que si la Tâche 1 a réussi
+    runs-on: ubuntu-latest # Tourne aussi sur un serveur GitHub
+
+    steps:
+      - name: 1. Installation de la clé SSH
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.DO_SSH_KEY }} # Utilise le secret qu'on a créé
+
+      - name: 2. Ajout du serveur aux hôtes connus (sécurité)
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.DO_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: 3. Connexion SSH et Déploiement
+        run: |
+          ssh ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} '
+            
+            # --- TÂCHES EXÉCUTÉES SUR TON SERVEUR DIGITALOCEAN ---
+            
+            echo "1/5 - Connexion SSH réussie"
+            
+            # 2. Créer le .env file sur le serveur
+            echo "2/5 - Création du fichier .env..."
+            echo "${{ secrets.ENV_FILE_CONTENT }}" > ~/anime-data-platform/.env
+            
+            # 3. Pull (téléchargement) de la nouvelle image Docker
+            echo "3/5 - Pull de la nouvelle image: ${{ env.IMAGE_NAME }}"
+            docker pull ${{ env.IMAGE_NAME }}
+            
+            # 4. Arrêt et suppression de l'ancien conteneur
+            echo "4/5 - Arrêt de l'ancien conteneur dagster_app"
+            docker rm -f dagster_app || true # "|| true" pour ignorer l'erreur si le conteneur n'existe pas
+            
+            # 5. Lancement du nouveau conteneur
+            echo "5/5 - Démarrage du nouveau conteneur !"
+            docker run -d -p 3000:3000 \
+              --env-file ~/anime-data-platform/.env \
+              -v dagster_storage:/app/dagster_home \
+              --name dagster_app \
+              --restart always \
+              ${{ env.IMAGE_NAME }}
+            
+            echo "Déploiement terminé !"
+          '
