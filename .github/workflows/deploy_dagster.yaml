@@ -2,17 +2,14 @@
 
 name: CI/CD - Deploy Dagster Pipeline
 
-# Déclencheur: se lance sur push vers 'main'
 on:
   push:
     branches:
       - main
 
 env:
-  # Nom de l'image Docker sur le GitHub Container Registry
   IMAGE_NAME: ghcr.io/${{ github.repository }}:latest
 
-# --- DÉFINITION DES TÂCHES (JOBS) ---
 jobs:
   
   # --- TÂCHE 1: CONSTRUIRE L'IMAGE ET LA POUSSER ---
@@ -44,24 +41,27 @@ jobs:
 
   # --- TÂCHE 2: DÉPLOYER L'IMAGE SUR LE SERVEUR ---
   deploy-to-droplet:
-    needs: build-and-push-image # Dépend de la Tâche 1
+    needs: build-and-push-image
     runs-on: ubuntu-latest
 
     steps:
       - name: 1. Déployer sur le serveur DigitalOcean
-        uses: appleboy/ssh-action@v1.0.3 # L'action de déploiement SSH
+        uses: appleboy/ssh-action@v1.0.3
+        
+        # --- CORRECTION ---
+        # L'environnement est défini ICI, au niveau de l'étape...
+        env:
+          ENV_FILE_PAYLOAD: ${{ secrets.ENV_FILE_CONTENT }}
+          DEPLOY_IMAGE_NAME: ${{ env.IMAGE_NAME }}
+        
+        # ... et "with:" contient les arguments de l'action
         with:
-          # 1. Infos de connexion (depuis les secrets GitHub)
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
+          script_stop: true # Arrête le script si une commande échoue
           
-          # 2. Variables d'environnement à passer au serveur
-          env:
-            ENV_FILE_PAYLOAD: ${{ secrets.ENV_FILE_CONTENT }}
-            DEPLOY_IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          
-          # 3. Le script à exécuter sur le serveur
+          # Le script à exécuter sur le serveur
           script: |
             echo "✅ 1/5 - Connexion SSH réussie"
             
@@ -70,8 +70,7 @@ jobs:
             cd $DEPLOY_DIR
             
             echo "🔑 2/5 - Création du fichier .env..."
-            # On écrit la variable d'env (qui contient tous tes secrets)
-            # dans le fichier .env sur le serveur.
+            # Les variables ($ENV_FILE_PAYLOAD) sont maintenant disponibles
             echo "$ENV_FILE_PAYLOAD" > $DEPLOY_DIR/.env
             echo "✅ Fichier .env créé."
 
