@@ -153,7 +153,7 @@ def compute_and_save_recommendations(
     df_anime = pd.read_sql("""
                            SELECT anime_id, title, description, score 
                            FROM view_anime_basic 
-                           WHERE score AND popularity is NOT NULL >= 60 
+                           WHERE averageScore AND popularity is NOT NULL >= 60 
                            ORDER BY popularity DESC
                            LIMIT 5000
                            """, engine)
