@@ -8,13 +8,13 @@ on:
       - main
 
 env:
-  # --- CORRECTION ---
-  # Le nom de l'image DOIT être en minuscules.
+  # Nom de l'image Docker (en minuscules)
   IMAGE_NAME: ghcr.io/yassermourabih/anime-data-platform:latest
 
 jobs:
   
   # --- TÂCHE 1: CONSTRUIRE L'IMAGE ET LA POUSSER ---
+  # (Cette partie est parfaite et ne change pas)
   build-and-push-image:
     runs-on: ubuntu-latest
     permissions:
@@ -23,21 +23,19 @@ jobs:
     steps:
       - name: 1. Cloner le dépôt
         uses: actions/checkout@v3
-
       - name: 2. Se connecter au GHCR
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: 3. Construire et Pousser l'image
         uses: docker/build-push-action@v4
         with:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ env.IMAGE_NAME }} # Utilise maintenant le nom corrigé
+          tags: ${{ env.IMAGE_NAME }}
           build-args: |
             DAGSTER_REQUIREMENTS_FILE=requirements_dagster.txt
 
@@ -50,17 +48,15 @@ jobs:
       - name: 1. Déployer sur le serveur DigitalOcean
         uses: appleboy/ssh-action@v1.0.3
         
-        # L'environnement est défini au niveau de l'étape
+        # On ne passe QUE le secret .env dans l'environnement de l'action
         env:
           ENV_FILE_PAYLOAD: ${{ secrets.ENV_FILE_CONTENT }}
-          DEPLOY_IMAGE_NAME: ${{ env.IMAGE_NAME }} # Utilise le nom corrigé
         
-        # "with:" contient les arguments de l'action
         with:
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
-          script_stop: true # Arrête le script si une commande échoue
+          script_stop: true
           
           # Le script à exécuter sur le serveur
           script: |
@@ -70,11 +66,15 @@ jobs:
             cd $DEPLOY_DIR
             
             echo "🔑 2/5 - Création du fichier .env..."
+            # $ENV_FILE_PAYLOAD est la variable d'env passée par l'action
             echo "$ENV_FILE_PAYLOAD" > $DEPLOY_DIR/.env
             echo "✅ Fichier .env créé."
 
-            echo "🐳 3/5 - Pull de la nouvelle image: $DEPLOY_IMAGE_NAME"
-            docker pull $DEPLOY_IMAGE_NAME
+            # --- CORRECTION ---
+            # On utilise ${{ env.IMAGE_NAME }} directement ici.
+            # GitHub va le remplacer par sa valeur avant d'envoyer le script.
+            echo "🐳 3/5 - Pull de la nouvelle image: ${{ env.IMAGE_NAME }}"
+            docker pull ${{ env.IMAGE_NAME }}
             
             echo "🛑 4/5 - Arrêt de l'ancien conteneur dagster_app"
             docker rm -f dagster_app || true
@@ -85,6 +85,6 @@ jobs:
               -v dagster_storage:/app/dagster_home \
               --name dagster_app \
               --restart always \
-              $DEPLOY_IMAGE_NAME
+              ${{ env.IMAGE_NAME }} # <-- La variable est aussi utilisée ici
             
             echo "🎉 Déploiement terminé !"
