@@ -59,7 +59,7 @@ jobs:
             
             echo "🔑 2/5 - Création du fichier .env..."
             
-            # --- CORRECTION : Méthode "echo" ligne par ligne ---
+            # --- Méthode "echo" ligne par ligne ---
             # C'est la seule méthode 100% fiable pour les secrets
             echo "DB_HOST=${{ secrets.DB_HOST }}" > $DEPLOY_DIR/.env
             echo "DB_PORT=${{ secrets.DB_PORT }}" >> $DEPLOY_DIR/.env
@@ -83,6 +83,7 @@ jobs:
             echo "🚀 5/5 - Démarrage du nouveau conteneur !"
             docker run -d -p 3000:3000 \
               --env-file $DEPLOY_DIR/.env \
+              -e DAGSTER_HOME=/app/dagster_home \
               -v dagster_storage:/app/dagster_home \
               --name dagster_app \
               --restart always \
