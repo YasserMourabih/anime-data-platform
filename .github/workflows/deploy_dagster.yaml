@@ -57,7 +57,7 @@ jobs:
             echo "1/5 - Connexion SSH réussie"
 
             echo "2/5 - Création du fichier .env..."
-            echo "${{ secrets.ENV_FILE_CONTENT }}" > ~/anime-data-platform/.env
+            echo '${{ secrets.ENV_FILE_CONTENT }}' > ~/anime-data-platform/.env
 
             echo "3/5 - Pull de la nouvelle image: ${{ env.IMAGE_NAME }}"
             docker pull ${{ env.IMAGE_NAME }}
