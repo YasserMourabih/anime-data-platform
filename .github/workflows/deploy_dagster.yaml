@@ -8,7 +8,9 @@ on:
       - main
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository }}:latest
+  # --- CORRECTION ---
+  # Le nom de l'image DOIT être en minuscules.
+  IMAGE_NAME: ghcr.io/yassermourabih/anime-data-platform:latest
 
 jobs:
   
@@ -35,7 +37,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ env.IMAGE_NAME }}
+          tags: ${{ env.IMAGE_NAME }} # Utilise maintenant le nom corrigé
           build-args: |
             DAGSTER_REQUIREMENTS_FILE=requirements_dagster.txt
 
@@ -48,13 +50,12 @@ jobs:
       - name: 1. Déployer sur le serveur DigitalOcean
         uses: appleboy/ssh-action@v1.0.3
         
-        # --- CORRECTION ---
-        # L'environnement est défini ICI, au niveau de l'étape...
+        # L'environnement est défini au niveau de l'étape
         env:
           ENV_FILE_PAYLOAD: ${{ secrets.ENV_FILE_CONTENT }}
-          DEPLOY_IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          DEPLOY_IMAGE_NAME: ${{ env.IMAGE_NAME }} # Utilise le nom corrigé
         
-        # ... et "with:" contient les arguments de l'action
+        # "with:" contient les arguments de l'action
         with:
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USER }}
@@ -65,12 +66,10 @@ jobs:
           script: |
             echo "✅ 1/5 - Connexion SSH réussie"
             
-            # On définit le chemin absolu et on s'y place
             export DEPLOY_DIR="/root/anime-data-platform"
             cd $DEPLOY_DIR
             
             echo "🔑 2/5 - Création du fichier .env..."
-            # Les variables ($ENV_FILE_PAYLOAD) sont maintenant disponibles
             echo "$ENV_FILE_PAYLOAD" > $DEPLOY_DIR/.env
             echo "✅ Fichier .env créé."
 
