@@ -1,3 +1,5 @@
+# .github/workflows/deploy_dagster.yml
+
 name: CI/CD - Deploy Dagster Pipeline
 
 on:
@@ -6,27 +8,29 @@ on:
       - main
 
 env:
-  IMAGE_NAME: ghcr.io/yassermourabih/anime-data-platform:latest
+  # L'image Docker sur le GitHub Container Registry
+  IMAGE_NAME: ghcr.io/${{ github.repository }}:latest
 
 jobs:
+  # --- TÂCHE 1: CONSTRUIRE L'IMAGE ET LA POUSSER ---
+  # (Cette tâche était parfaite et ne change pas)
   build-and-push-image:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
-
+      packages: write 
     steps:
       - name: 1. Cloner le dépôt
         uses: actions/checkout@v3
 
-      - name: 2. Se connecter au Registre de Conteneurs GitHub (GHCR)
+      - name: 2. Se connecter au GHCR
         uses: docker/login-action@v2
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 3. Construire et Pousser l'image Docker
+      - name: 3. Construire et Pousser l'image
         uses: docker/build-push-action@v4
         with:
           context: .
@@ -36,48 +40,43 @@ jobs:
           build-args: |
             DAGSTER_REQUIREMENTS_FILE=requirements_dagster.txt
 
+  # --- TÂCHE 2: DÉPLOYER L'IMAGE SUR LE SERVEUR ---
+  # (C'est ici que nous changeons tout pour utiliser l'action "appleboy")
   deploy-to-droplet:
-    needs: build-and-push-image
+    needs: build-and-push-image # Dépend de la Tâche 1
     runs-on: ubuntu-latest
 
     steps:
-      - name: 1. Installation de la clé SSH
-        uses: webfactory/ssh-agent@v0.5.3
+      - name: 1. Déployer sur le serveur DigitalOcean
+        uses: appleboy/ssh-action@v1.0.3 # <-- L'ACTION MAGIQUE
         with:
-          ssh-private-key: ${{ secrets.DO_SSH_KEY }}
-
-      - name: 2. Ajout du serveur aux hôtes connus (sécurité)
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H "${{ secrets.DO_HOST }}" >> ~/.ssh/known_hosts
-
-      - name: 3. Connexion SSH et Déploiement
-        env:
-          ENV_PAYLOAD: ${{ secrets.ENV_FILE_CONTENT }}
-        run: |
-          ssh ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "bash -l" <<'ENDSSH'
+          # Les secrets que tu as déjà configurés
+          host: ${{ secrets.DO_HOST }}
+          username: ${{ secrets.DO_USER }}
+          key: ${{ secrets.DO_SSH_KEY }}
+          
+          # Le script que le serveur va exécuter (géré proprement par l'action)
+          script: |
+            echo "✅ 1/5 - Connexion SSH réussie"
             
-            echo " 1/5 - Connexion SSH réussie"
-
-            # Utiliser un chemin absolu
+            # Le chemin absolu est plus sûr
             export DEPLOY_DIR="/root/anime-data-platform"
-
-            cd $DEPLOY_DIR
-                        
-            echo " 2/5 - Création du fichier .env..."
-            # On écrit le contenu de la variable d'env dans le fichier .env
-            # Les guillemets sont cruciaux pour préserver les nouvelles lignes
-            echo "$ENV_PAYLOAD" > $DEPLOY_DIR/.env
-            echo " Fichier .env créé."
             
-            echo " 3/5 - Pull de la nouvelle image: ${{ env.IMAGE_NAME }}"
+            echo "🔑 2/5 - Création du fichier .env..."
+            # L'action "appleboy" substitue les secrets directement ici.
+            # C'est beaucoup plus fiable que notre "echo" manuel.
+            cat <<EOF > $DEPLOY_DIR/.env
+${{ secrets.ENV_FILE_CONTENT }}
+EOF
+            echo "✅ Fichier .env créé."
+
+            echo "🐳 3/5 - Pull de la nouvelle image: ${{ env.IMAGE_NAME }}"
             docker pull ${{ env.IMAGE_NAME }}
             
-            echo " 4/5 - Arrêt de l'ancien conteneur dagster_app"
+            echo "🛑 4/5 - Arrêt de l'ancien conteneur dagster_app"
             docker rm -f dagster_app || true
             
-            echo " 5/5 - Démarrage du nouveau conteneur !"
-            # Utiliser le chemin absolu pour --env-file
+            echo "🚀 5/5 - Démarrage du nouveau conteneur !"
             docker run -d -p 3000:3000 \
               --env-file $DEPLOY_DIR/.env \
               -v dagster_storage:/app/dagster_home \
@@ -86,4 +85,3 @@ jobs:
               ${{ env.IMAGE_NAME }}
             
             echo "🎉 Déploiement terminé !"
-          ENDSSH
