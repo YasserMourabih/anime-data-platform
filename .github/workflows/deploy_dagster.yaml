@@ -52,36 +52,37 @@ jobs:
           ssh-keyscan -H "${{ secrets.DO_HOST }}" >> ~/.ssh/known_hosts
 
       - name: 3. Connexion SSH et Déploiement
+        env:
+          ENV_PAYLOAD: ${{ secrets.ENV_FILE_CONTENT }}
         run: |
-          ssh ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} '
+          ssh ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} "bash -l" <<'ENDSSH'
             
-            echo "1/5 - Connexion SSH réussie"
+            echo " 1/5 - Connexion SSH réussie"
             
-            # 2. Créer le .env file sur le serveur (méthode robuste "Here Document")
-            echo "2/5 - Création du fichier .env..."
+            # On change de dossier pour être au bon endroit
+            cd ~/anime-data-platform
             
-            cat <<EOF > ~/anime-data-platform/.env
-            ${{ secrets.ENV_FILE_CONTENT }}
-            EOF
+            echo " 2/5 - Création du fichier .env..."
+            # On écrit le contenu de la variable d'env dans le fichier .env
+            # Les guillemets sont cruciaux pour préserver les nouvelles lignes
+            echo "$ENV_PAYLOAD" > .env
+            echo " Fichier .env créé."
             
-            echo "Fichier .env créé."
-            
-            # 3. Pull (téléchargement) de la nouvelle image Docker
-            echo "3/5 - Pull de la nouvelle image: ${{ env.IMAGE_NAME }}"
+            echo " 3/5 - Pull de la nouvelle image: ${{ env.IMAGE_NAME }}"
             docker pull ${{ env.IMAGE_NAME }}
             
-            # 4. Arrêt et suppression de l'ancien conteneur
-            echo "4/5 - Arrêt de l'ancien conteneur dagster_app"
+            echo " 4/5 - Arrêt de l'ancien conteneur dagster_app"
             docker rm -f dagster_app || true
             
-            # 5. Lancement du nouveau conteneur
-            echo "5/5 - Démarrage du nouveau conteneur !"
+            echo " 5/5 - Démarrage du nouveau conteneur !"
+            # Le chemin --env-file est maintenant relatif (./.env)
+            # car on est dans le bon dossier
             docker run -d -p 3000:3000 \
-              --env-file ~/anime-data-platform/.env \
+              --env-file ./.env \
               -v dagster_storage:/app/dagster_home \
               --name dagster_app \
               --restart always \
               ${{ env.IMAGE_NAME }}
             
             echo "🎉 Déploiement terminé !"
-          '
+          ENDSSH
