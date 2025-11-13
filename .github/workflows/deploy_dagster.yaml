@@ -1,29 +1,71 @@
-# --- TÂCHE 2: DÉPLOYER L'IMAGE SUR LE SERVEUR ---
+# .github/workflows/deploy_dagster.yml
+
+name: CI/CD - Deploy Dagster Pipeline
+
+# Déclencheur: se lance sur push vers 'main'
+on:
+  push:
+    branches:
+      - main
+
+env:
+  # Nom de l'image Docker sur le GitHub Container Registry
+  IMAGE_NAME: ghcr.io/${{ github.repository }}:latest
+
+# --- DÉFINITION DES TÂCHES (JOBS) ---
+jobs:
+  
+  # --- TÂCHE 1: CONSTRUIRE L'IMAGE ET LA POUSSER ---
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write 
+    steps:
+      - name: 1. Cloner le dépôt
+        uses: actions/checkout@v3
+
+      - name: 2. Se connecter au GHCR
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 3. Construire et Pousser l'image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ env.IMAGE_NAME }}
+          build-args: |
+            DAGSTER_REQUIREMENTS_FILE=requirements_dagster.txt
+
+  # --- TÂCHE 2: DÉPLOYER L'IMAGE SUR LE SERVEUR ---
   deploy-to-droplet:
     needs: build-and-push-image # Dépend de la Tâche 1
     runs-on: ubuntu-latest
 
     steps:
       - name: 1. Déployer sur le serveur DigitalOcean
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.0.3 # L'action de déploiement SSH
         with:
-          # 1. Infos de connexion (inchangé)
+          # 1. Infos de connexion (depuis les secrets GitHub)
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
           
           # 2. Variables d'environnement à passer au serveur
-          # L'action va les injecter dans la session SSH
           env:
             ENV_FILE_PAYLOAD: ${{ secrets.ENV_FILE_CONTENT }}
             DEPLOY_IMAGE_NAME: ${{ env.IMAGE_NAME }}
           
           # 3. Le script à exécuter sur le serveur
-          # $ENV_FILE_PAYLOAD et $DEPLOY_IMAGE_NAME seront disponibles !
           script: |
             echo "✅ 1/5 - Connexion SSH réussie"
             
-            # On définit le chemin et on s'y place
+            # On définit le chemin absolu et on s'y place
             export DEPLOY_DIR="/root/anime-data-platform"
             cd $DEPLOY_DIR
             
