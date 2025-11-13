@@ -1,77 +1,40 @@
-# .github/workflows/deploy_dagster.yml
-
-name: CI/CD - Deploy Dagster Pipeline
-
-on:
-  push:
-    branches:
-      - main
-
-env:
-  # L'image Docker sur le GitHub Container Registry
-  IMAGE_NAME: ghcr.io/${{ github.repository }}:latest
-
-jobs:
-  # --- TÂCHE 1: CONSTRUIRE L'IMAGE ET LA POUSSER ---
-  # (Cette tâche était parfaite et ne change pas)
-  build-and-push-image:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write 
-    steps:
-      - name: 1. Cloner le dépôt
-        uses: actions/checkout@v3
-
-      - name: 2. Se connecter au GHCR
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: 3. Construire et Pousser l'image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ env.IMAGE_NAME }}
-          build-args: |
-            DAGSTER_REQUIREMENTS_FILE=requirements_dagster.txt
-
-  # --- TÂCHE 2: DÉPLOYER L'IMAGE SUR LE SERVEUR ---
-  # (C'est ici que nous changeons tout pour utiliser l'action "appleboy")
+# --- TÂCHE 2: DÉPLOYER L'IMAGE SUR LE SERVEUR ---
   deploy-to-droplet:
     needs: build-and-push-image # Dépend de la Tâche 1
     runs-on: ubuntu-latest
 
     steps:
       - name: 1. Déployer sur le serveur DigitalOcean
-        uses: appleboy/ssh-action@v1.0.3 # <-- L'ACTION MAGIQUE
+        uses: appleboy/ssh-action@v1.0.3
         with:
-          # Les secrets que tu as déjà configurés
+          # 1. Infos de connexion (inchangé)
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USER }}
           key: ${{ secrets.DO_SSH_KEY }}
           
-          # Le script que le serveur va exécuter (géré proprement par l'action)
+          # 2. Variables d'environnement à passer au serveur
+          # L'action va les injecter dans la session SSH
+          env:
+            ENV_FILE_PAYLOAD: ${{ secrets.ENV_FILE_CONTENT }}
+            DEPLOY_IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          
+          # 3. Le script à exécuter sur le serveur
+          # $ENV_FILE_PAYLOAD et $DEPLOY_IMAGE_NAME seront disponibles !
           script: |
             echo "✅ 1/5 - Connexion SSH réussie"
             
-            # Le chemin absolu est plus sûr
+            # On définit le chemin et on s'y place
             export DEPLOY_DIR="/root/anime-data-platform"
+            cd $DEPLOY_DIR
             
             echo "🔑 2/5 - Création du fichier .env..."
-            # L'action "appleboy" substitue les secrets directement ici.
-            # C'est beaucoup plus fiable que notre "echo" manuel.
-            cat <<EOF > $DEPLOY_DIR/.env
-${{ secrets.ENV_FILE_CONTENT }}
-EOF
+            # On écrit la variable d'env (qui contient tous tes secrets)
+            # dans le fichier .env sur le serveur.
+            echo "$ENV_FILE_PAYLOAD" > $DEPLOY_DIR/.env
             echo "✅ Fichier .env créé."
 
-            echo "🐳 3/5 - Pull de la nouvelle image: ${{ env.IMAGE_NAME }}"
-            docker pull ${{ env.IMAGE_NAME }}
+            echo "🐳 3/5 - Pull de la nouvelle image: $DEPLOY_IMAGE_NAME"
+            docker pull $DEPLOY_IMAGE_NAME
             
             echo "🛑 4/5 - Arrêt de l'ancien conteneur dagster_app"
             docker rm -f dagster_app || true
@@ -82,6 +45,6 @@ EOF
               -v dagster_storage:/app/dagster_home \
               --name dagster_app \
               --restart always \
-              ${{ env.IMAGE_NAME }}
+              $DEPLOY_IMAGE_NAME
             
             echo "🎉 Déploiement terminé !"
