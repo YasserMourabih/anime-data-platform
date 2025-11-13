@@ -54,17 +54,27 @@ jobs:
       - name: 3. Connexion SSH et Déploiement
         run: |
           ssh ${{ secrets.DO_USER }}@${{ secrets.DO_HOST }} '
+            
             echo "1/5 - Connexion SSH réussie"
-
+            
+            # 2. Créer le .env file sur le serveur (méthode robuste "Here Document")
             echo "2/5 - Création du fichier .env..."
-            echo '${{ secrets.ENV_FILE_CONTENT }}' > ~/anime-data-platform/.env
-
+            
+            cat <<EOF > ~/anime-data-platform/.env
+            ${{ secrets.ENV_FILE_CONTENT }}
+            EOF
+            
+            echo "Fichier .env créé."
+            
+            # 3. Pull (téléchargement) de la nouvelle image Docker
             echo "3/5 - Pull de la nouvelle image: ${{ env.IMAGE_NAME }}"
             docker pull ${{ env.IMAGE_NAME }}
-
+            
+            # 4. Arrêt et suppression de l'ancien conteneur
             echo "4/5 - Arrêt de l'ancien conteneur dagster_app"
             docker rm -f dagster_app || true
-
+            
+            # 5. Lancement du nouveau conteneur
             echo "5/5 - Démarrage du nouveau conteneur !"
             docker run -d -p 3000:3000 \
               --env-file ~/anime-data-platform/.env \
@@ -72,6 +82,6 @@ jobs:
               --name dagster_app \
               --restart always \
               ${{ env.IMAGE_NAME }}
-
-            echo "Déploiement terminé !"
+            
+            echo "🎉 Déploiement terminé !"
           '
