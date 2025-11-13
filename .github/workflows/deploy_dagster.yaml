@@ -8,13 +8,11 @@ on:
       - main
 
 env:
-  # Nom de l'image Docker (en minuscules)
   IMAGE_NAME: ghcr.io/yassermourabih/anime-data-platform:latest
 
 jobs:
   
-  # --- TÂCHE 1: CONSTRUIRE L'IMAGE ET LA POUSSER ---
-  # (Cette partie est parfaite et ne change pas)
+  # --- TÂCHE 1: CONSTRUIRE L'IMAGE ---
   build-and-push-image:
     runs-on: ubuntu-latest
     permissions:
@@ -39,7 +37,7 @@ jobs:
           build-args: |
             DAGSTER_REQUIREMENTS_FILE=requirements_dagster.txt
 
-  # --- TÂCHE 2: DÉPLOYER L'IMAGE SUR LE SERVEUR ---
+  # --- TÂCHE 2: DÉPLOYER LE CONTENEUR ---
   deploy-to-droplet:
     needs: build-and-push-image
     runs-on: ubuntu-latest
@@ -47,11 +45,6 @@ jobs:
     steps:
       - name: 1. Déployer sur le serveur DigitalOcean
         uses: appleboy/ssh-action@v1.0.3
-        
-        # On ne passe QUE le secret .env dans l'environnement de l'action
-        env:
-          ENV_FILE_PAYLOAD: ${{ secrets.ENV_FILE_CONTENT }}
-        
         with:
           host: ${{ secrets.DO_HOST }}
           username: ${{ secrets.DO_USER }}
@@ -59,32 +52,33 @@ jobs:
           script_stop: true
           
           # Le script à exécuter sur le serveur
+          # On n'écrit PLUS de fichier .env !
           script: |
-            echo "✅ 1/5 - Connexion SSH réussie"
+            echo "✅ 1/4 - Connexion SSH réussie"
             
-            export DEPLOY_DIR="/root/anime-data-platform"
-            cd $DEPLOY_DIR
-            
-            echo "🔑 2/5 - Création du fichier .env..."
-            # $ENV_FILE_PAYLOAD est la variable d'env passée par l'action
-            echo "$ENV_FILE_PAYLOAD" > $DEPLOY_DIR/.env
-            echo "✅ Fichier .env créé."
-
-            # --- CORRECTION ---
-            # On utilise ${{ env.IMAGE_NAME }} directement ici.
-            # GitHub va le remplacer par sa valeur avant d'envoyer le script.
-            echo "🐳 3/5 - Pull de la nouvelle image: ${{ env.IMAGE_NAME }}"
+            echo "🐳 2/4 - Pull de la nouvelle image: ${{ env.IMAGE_NAME }}"
             docker pull ${{ env.IMAGE_NAME }}
             
-            echo "🛑 4/5 - Arrêt de l'ancien conteneur dagster_app"
+            echo "🛑 3/4 - Arrêt de l'ancien conteneur dagster_app"
             docker rm -f dagster_app || true
             
-            echo "🚀 5/5 - Démarrage du nouveau conteneur !"
+            echo "🚀 4/4 - Démarrage du nouveau conteneur (avec variables injectées)"
+            # On passe chaque variable d'env une par une.
+            # C'est 1000x plus robuste.
             docker run -d -p 3000:3000 \
-              --env-file $DEPLOY_DIR/.env \
+              -e DB_HOST="${{ secrets.DB_HOST }}" \
+              -e DB_PORT="${{ secrets.DB_PORT }}" \
+              -e DB_NAME="${{ secrets.DB_NAME }}" \
+              -e DB_USER="${{ secrets.DB_USER }}" \
+              -e DB_PASS="${{ secrets.DB_PASS }}" \
+              -e SSL_MODE="${{ secrets.SSL_MODE }}" \
+              -e ANILIST_API_URL="${{ secrets.ANILIST_API_URL }}" \
+              -e GITHUB_TOKEN="${{ secrets.DEPLOY_GITHUB_TOKEN }}" \
+              -e GITHUB_REPO="${{ secrets.PROJECT_REPO }}" \
+              -e GITHUB_RELEASE_TAG="${{ secrets.PROJECT_RELEASE_TAG }}" \
               -v dagster_storage:/app/dagster_home \
               --name dagster_app \
               --restart always \
-              ${{ env.IMAGE_NAME }} # <-- La variable est aussi utilisée ici
+              ${{ env.IMAGE_NAME }}
             
             echo "🎉 Déploiement terminé !"
