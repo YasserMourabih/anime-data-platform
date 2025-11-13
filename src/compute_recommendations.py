@@ -151,9 +151,9 @@ def compute_and_save_recommendations(
     # 2. Chargement des données
     log("⏳ Chargement des données depuis PostgreSQL...")
     df_anime = pd.read_sql("""
-                           SELECT anime_id, title, description, averageScore as score
+                           SELECT anime_id, title, description, score
                            FROM view_anime_basic 
-                           WHERE score >= 60 AND popularity is NOT NULL 
+                           WHERE score > 60 AND popularity is NOT NULL 
                            ORDER BY popularity DESC
                            LIMIT 5000
                            """, engine)
