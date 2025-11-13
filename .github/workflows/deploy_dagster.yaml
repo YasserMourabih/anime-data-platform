@@ -6,7 +6,7 @@ on:
       - main
 
 env:
-  IMAGE_NAME: ghcr.io/${{ toLower(github.repository) }}:latest
+  IMAGE_NAME: ghcr.io/yassermourabih/anime-data-platform:latest
 
 jobs:
   build-and-push-image:
