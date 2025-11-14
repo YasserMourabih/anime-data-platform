@@ -19,6 +19,10 @@ COPY requirements_dagster.txt .
 # Docker met cette étape en cache. Si tu changes ton code (ex: app.py)
 # mais pas tes requirements, Docker n'aura pas à tout réinstaller !
 # C'est une "couche" (layer) d'image.
+# On force la version CPU pour éviter les bibliothèques GPU inutiles
+# Installe PyTorch en version CPU-only
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+# Installe le reste des dépendances
 RUN pip install --no-cache-dir -r requirements_dagster.txt
 
 # --- ÉTAPE 4: COPIE DU CODE SOURCE ---

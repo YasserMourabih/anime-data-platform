@@ -1,5 +1,3 @@
-# src/compute_recommendations.py
-
 import pandas as pd
 import os
 import re
@@ -51,7 +49,7 @@ def compute_and_load_embeddings(logger=None) -> dict:
     db_url = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASS')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}?sslmode=require"
     engine = sqlalchemy.create_engine(db_url)
     
-# Nouveau (filtre sur la description ET le score)
+    # Nouveau (filtre sur la description ET le score)
     query = """
     SELECT anime_id, title, description
     FROM view_anime_basic
