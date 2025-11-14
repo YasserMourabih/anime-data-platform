@@ -8,7 +8,7 @@ python-dotenv==1.2.1
 requests==2.32.5
 
 # ML and orchestration dependencies
-sentence-transformers
-pgvector
+sentence-transformers==5.1.2
+pgvector==0.4.1
 dagster==1.12.1
 dagster-webserver==1.12.1

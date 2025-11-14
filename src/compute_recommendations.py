@@ -56,7 +56,7 @@ def compute_and_load_embeddings(logger=None) -> dict:
     SELECT anime_id, title, description
     FROM view_anime_basic
     WHERE description IS NOT NULL AND description != ''
-      AND score > 60
+      AND score > 60 ORDER BY score DESC LIMIT 5000
     """
     df_anime = pd.read_sql(query, engine)
 
