@@ -119,13 +119,7 @@ def render_header():
     """Affiche le titre et sous-titre du jeu."""
     st.markdown("""
         <h1 class="main-title">
-            <svg class="icon-svg-large" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 4L12 20M12 4L8 8M12 4L16 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
             HIGHER or LOWER
-            <svg class="icon-svg-large" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 20L12 4M12 20L8 16M12 20L16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
         </h1>
     """, unsafe_allow_html=True)
     st.markdown('<p class="subtitle">Devinez si le score de l\'anime suivant est plus haut ou plus bas !</p>', unsafe_allow_html=True)
@@ -480,6 +474,8 @@ def render_sidebar():
         st.page_link("app.py", label="Accueil")
         st.page_link("pages/2_anime_recommender.py", label="Recommender")
         st.page_link("pages/1_higher_lower.py", label="Higher or Lower")
+        st.page_link("pages/3_recherche_sementique.py", label="Recherche Sémantique")
+
         
         st.markdown("---")
         

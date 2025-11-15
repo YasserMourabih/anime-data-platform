@@ -1,0 +1,80 @@
+/* ==========================================================================
+   SEMANTIC SEARCH PAGE STYLES
+   ========================================================================== */
+
+.main-title {
+    text-align: center;
+    font-size: 3.2rem !important;
+    font-weight: bold;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 1rem;
+    animation: fadeIn 0.8s ease-in;
+}
+
+.subtitle {
+    text-align: center;
+    font-size: 1.2rem !important;
+    color: #666;
+    margin-bottom: 2rem;
+    animation: fadeIn 0.8s ease-in 0.2s both;
+}
+
+
+.semantic-card {
+    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    padding: 1.2rem;
+    border-radius: 12px;
+    margin-bottom: 1.2rem;
+    box-shadow: 0 2px 8px rgba(102,126,234,0.08);
+    transition: transform 0.2s ease;
+}
+.semantic-card:hover {
+    transform: translateY(-2px) scale(1.02);
+}
+
+.semantic-card .anime-title {
+    color: #222;
+    font-size: 1.15rem;
+    font-weight: 600;
+    margin-bottom: 0.3rem;
+}
+
+.score-badge {
+    display: inline-block;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 0.3rem 0.8rem;
+    border-radius: 20px;
+    font-weight: bold;
+    margin-right: 0.5rem;
+}
+
+.result-description {
+    font-size: 1rem;
+    color: #333;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.result-meta {
+    font-size: 0.95rem;
+    color: #666;
+    margin-bottom: 0.5rem;
+}
+
+.progress-bar {
+    height: 10px;
+    background: #e0e7ff;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 0.5rem;
+}
+.progress-bar-inner {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    border-radius: 8px;
+}
+

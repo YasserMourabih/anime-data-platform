@@ -36,11 +36,6 @@ def load_recommendations():
 # --- HEADER ---
 st.markdown("""
     <h1 class="main-title">
-        <svg class="icon-svg-large" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-            <circle cx="12" cy="12" r="6" stroke="currentColor" stroke-width="2"/>
-            <circle cx="12" cy="12" r="2" fill="currentColor"/>
-        </svg>
         Anime Recommender
     </h1>
 """, unsafe_allow_html=True)
@@ -118,6 +113,8 @@ with st.sidebar:
     st.page_link("app.py", label="Accueil")
     st.page_link("pages/2_anime_recommender.py", label="Recommender")
     st.page_link("pages/1_higher_lower.py", label="Higher or Lower")
+    st.page_link("pages/3_recherche_sementique.py", label="Recherche Sémantique")
+
     
     st.markdown("---")
     

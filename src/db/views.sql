@@ -12,6 +12,7 @@ SELECT
     raw_data->'coverImage'->>'large' AS cover_image,  -- Image de couverture
     -- On extrait l'année de début si disponible
     (raw_data->'startDate'->>'year')::INTEGER AS start_year,
+    raw_data->'genres' AS genres, -- Tableau JSON brut des genres
     fetched_at
 FROM raw_anilist_json;
 

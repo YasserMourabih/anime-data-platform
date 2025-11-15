@@ -215,6 +215,8 @@ with st.sidebar:
     st.page_link("app.py", label="Accueil")
     st.page_link("pages/2_anime_recommender.py", label="Recommender")
     st.page_link("pages/1_higher_lower.py", label="Higher or Lower")
+    st.page_link("pages/3_recherche_sementique.py", label="Recherche Sémantique")
+
     
     st.markdown("---")
     

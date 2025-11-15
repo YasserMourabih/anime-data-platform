@@ -1,3 +1,10 @@
+# --- FORCER PYTORCH CPU (pour économiser la RAM de Streamlit Cloud) ---
+--index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+torchaudio
+# --- FIN DE L'AJOUT PYTORCH ---
+
 # Streamlit app dependencies
 streamlit==1.50.0
 pandas==2.3.3
@@ -6,3 +13,7 @@ sqlalchemy==2.0.44
 psycopg2-binary==2.9.11
 python-dotenv==1.2.1
 requests==2.32.5
+
+# --- NOUVELLES DÉPENDANCES IA ---
+sentence-transformers
+sqlalchemy-pgvector

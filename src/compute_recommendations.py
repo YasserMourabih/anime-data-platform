@@ -2,7 +2,8 @@ import pandas as pd
 import os
 import re
 import psycopg2
-from pgvector.psycopg2 import register_vector # Outil pour insérer les vecteurs
+from psycopg2.extras import execute_batch
+from pgvector.psycopg2 import register_vector  # Outil pour insérer les vecteurs
 from sentence_transformers import SentenceTransformer # Le modèle d'IA
 import sqlalchemy
 from dotenv import load_dotenv
@@ -24,10 +25,6 @@ def clean_html(raw_html):
     return text.strip()
 
 def compute_and_load_embeddings(logger=None) -> dict:
-    """
-    Calcule les embeddings sémantiques des synopsis et les charge dans la BDD Neon.
-    Remplace l'ancienne logique TF-IDF/Parquet.
-    """
     
     def log(msg, level="info"):
         if logger:
@@ -36,65 +33,103 @@ def compute_and_load_embeddings(logger=None) -> dict:
         else:
             print(msg)
 
-    log("🧠 Démarrage du pipeline d'embeddings sémantiques...")
+    log("🧠 Démarrage du pipeline d'embeddings enrichis...")
 
-    # --- 1. Chargement du Modèle d'IA ---
-    log(f"Chargement du modèle Hugging Face : {MODEL_NAME}...")
-    # La première fois, cela va télécharger le modèle (plusieurs Mo)
+    # 1. Chargement du Modèle
+    log(f"Chargement du modèle : {MODEL_NAME}...")
     model = SentenceTransformer(MODEL_NAME)
-    log("✅ Modèle chargé en mémoire.")
 
-    # --- 2. Chargement des Données (Synopsis) ---
-    log("⏳ Chargement des synopsis depuis Neon...")
+    # 2. Connexion DB
     db_url = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASS')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}?sslmode=require"
     engine = sqlalchemy.create_engine(db_url)
     
-    # Nouveau (filtre sur la description ET le score)
-    query = """
-    SELECT anime_id, title, description
+# --- 3. Chargement des Données ---
+    log("⏳ Chargement des données enrichies (Animes + Studios + Genres + Tags)...")
+    
+    # A. Les Animes + Studio (via extraction JSON directe pour faire simple)
+    # On extrait le nom du studio directement du JSONB
+    query_anime = """
+    SELECT 
+        anime_id, 
+        title, 
+        description,
+        raw_data->'studios'->'nodes'->0->>'name' as studio -- On prend le 1er studio principal
     FROM view_anime_basic
     WHERE description IS NOT NULL AND description != ''
-      AND score > 60 ORDER BY score DESC LIMIT 5000
+      AND score > 60
     """
-    df_anime = pd.read_sql(query, engine)
-
-    if df_anime.empty:
-        log("⚠️ Aucune description trouvée. Arrêt.")
-        return {"animes_processed": 0}
-
-    log(f"✅ {len(df_anime)} animes avec synopsis à traiter.")
+    df_anime = pd.read_sql(query_anime, engine)
     
-    # Nettoyage
-    df_anime['description_clean'] = df_anime['description'].apply(clean_html)
+    # B. Les Genres et Tags (Filtrés par RANK !)
+    anime_ids_tuple = tuple(df_anime['anime_id'].tolist())
     
-    # Préparer les données pour l'IA
-    anime_ids = df_anime['anime_id'].tolist()
-    anime_titles = df_anime['title'].tolist()
-    # Le modèle a besoin d'une simple liste de phrases
-    sentences_to_encode = df_anime['description_clean'].tolist()
+    # On charge les tags, mais on récupère aussi leur RANK
+    # (Assure-toi que ta vue view_anime_tags a bien la colonne 'rank', sinon utilise raw_anilist_json)
+    # Si ta vue n'a pas rank, on fait sans pour l'instant, mais c'est mieux avec.
+    df_tags = pd.read_sql(f"SELECT anime_id, tag FROM view_anime_tags WHERE anime_id IN {anime_ids_tuple}", engine)
+    
+    df_genres = pd.read_sql(f"SELECT anime_id, genre FROM view_anime_genres WHERE anime_id IN {anime_ids_tuple}", engine)
 
-    # --- 3. Calcul des Embeddings (Le "gros" travail) ---
-    log("🤖 Calcul des embeddings (vecteurs)...")
-    # show_progress_bar=True est super pour voir l'avancement
+    log(f"✅ {len(df_anime)} animes chargés.")
+
+    # 4. Préparation du "Super Texte" Optimisé
+    log("🍳 Création du texte enrichi (Stratégie V3 : Studio + Répétition)...")
+    
+    # Agglomération des genres
+    genres_per_anime = df_genres.groupby('anime_id')['genre'].apply(lambda x: ' '.join(x)).reset_index()
+    
+    # Agglomération des tags (Tu pourrais filtrer ici si tu avais le rank dans le DF)
+    tags_per_anime = df_tags.groupby('anime_id')['tag'].apply(lambda x: ' '.join(x)).reset_index()
+    
+    # Fusion
+    df_final = pd.merge(df_anime, genres_per_anime, on='anime_id', how='left')
+    df_final = pd.merge(df_final, tags_per_anime, on='anime_id', how='left')
+    df_final = df_final.fillna('')
+    
+    # Nettoyage description
+    df_final['description'] = df_final['description'].apply(clean_html)
+    
+    # --- LA FORMULE MAGIQUE ---
+    # On construit une phrase structurée qui "guide" le modèle
+    def create_prompt(row):
+        # 1. Le Titre (Répété pour l'ancrage)
+        text = f"Anime: {row['title']}. {row['title']}. "
+        
+        # 2. Le Studio (Contexte visuel/style)
+        if row['studio']:
+            text += f"Studio: {row['studio']}. "
+            
+        # 3. Les Genres (Fondamentaux)
+        text += f"Genre: {row['genre']}. "
+        
+        # 4. Les Tags (Détails, mots-clés)
+        text += f"Themes: {row['tag']}. "
+        
+        # 5. Le Synopsis (L'histoire)
+        text += f"Story: {row['description']}"
+        return text
+
+    df_final['text_to_embed'] = df_final.apply(create_prompt, axis=1)
+        
+    # On coupe si c'est trop long (les modèles ont souvent une limite, ex: 256 tokens)
+    # Mais all-MiniLM gère bien la troncation auto.
+
+    sentences_to_encode = df_final['text_to_embed'].tolist()
+    anime_ids = df_final['anime_id'].tolist()
+    anime_titles = df_final['title'].tolist()
+
+    # 5. Calcul des Embeddings
+    log("🤖 Calcul des vecteurs sur le texte enrichi...")
     embeddings = model.encode(sentences_to_encode, show_progress_bar=True, batch_size=64)
-    log(f"✅ {len(embeddings)} vecteurs générés (Dimension: {embeddings.shape[1]})")
-
-    # --- 4. Connexion BDD (avec pgvector) ---
-    log("💾 Connexion à Neon avec le pilote pgvector...")
-    # On utilise psycopg2 directement, c'est mieux pour pgvector
-    conn = psycopg2.connect(db_url)
-    register_vector(conn) # On apprend au pilote à parler "vecteur"
-    cur = conn.cursor()
-
-    # --- 5. Insertion dans la BDD (UPSERT) ---
-    log("Chargement des vecteurs dans la table 'anime_embeddings'...")
     
-    # On prépare les données pour une insertion en masse
+    # 6. Insertion dans Neon (pgvector)
+    log("💾 Mise à jour de la base vectorielle...")
+    conn = psycopg2.connect(db_url)
+    register_vector(conn)
+    cur = conn.cursor()
+    
     data_to_insert = list(zip(anime_ids, anime_titles, embeddings))
     
-    # Requête d'UPSERT :
-    # Si l'anime_id existe, on met à jour l'embedding et le titre
-    # Sinon, on l'insère. C'est robuste.
     query_upsert = """
     INSERT INTO anime_embeddings (anime_id, title, embedding)
     VALUES (%s, %s, %s)
@@ -103,18 +138,15 @@ def compute_and_load_embeddings(logger=None) -> dict:
         embedding = EXCLUDED.embedding;
     """
     
-    # Exécution en masse (beaucoup plus rapide)
-    from psycopg2.extras import execute_batch
     execute_batch(cur, query_upsert, data_to_insert, page_size=500)
     
     conn.commit()
     cur.close()
     conn.close()
 
-    log("🎉 Succès ! La base de données vectorielle est à jour.")
+    log("🎉 Base vectorielle enrichie et mise à jour !")
     
     return {
         "animes_processed": len(data_to_insert),
-        "vector_dimension": embeddings.shape[1],
-        "model_used": MODEL_NAME
+        "features_used": "Title + Genres + Tags + Description"
     }
