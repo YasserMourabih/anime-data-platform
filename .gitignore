@@ -1,29 +1,34 @@
 # Python
 venv/
+.venv/
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-*.so
-*.egg
+*.py[cod]
 *.egg-info/
 dist/
 build/
+.pytest_cache/
+.ruff_cache/
 
-# Environment variables
+# Variables d'environnement (ne jamais commiter)
 .env
+.env.*
+!.env.example
 
 # Dagster
 .tmp_dagster_home*/
 dagster_home/
 
-# IDE
+# Données générées par le pipeline
+data/*.parquet
+data/*.json
+data/*.gz
+
+# IDE / outils
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
-*~
 
 # OS
 .DS_Store
@@ -32,13 +37,3 @@ Thumbs.db
 # Logs
 logs/
 *.log
-
-# Project specific
-TODO.md
-
-# Data (optionnel)
-# data/
-data/*.parquet
-data/*.gz
-# *.csv
-# *.json
