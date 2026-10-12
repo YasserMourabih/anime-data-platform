@@ -4,11 +4,11 @@ Plateforme de recommandation d'animes basée sur l'apprentissage automatique (TF
 
 ## Fonctionnalités
 
-- ** Pipeline d'extraction** : Récupération automatisée de 25 000+ animes depuis l'API AniList
-- ** Système de recommandations** : Algorithme TF-IDF pondéré (genres, tags, synopsis)
-- ** Jeu Higher or Lower** : Interface interactive Streamlit pour deviner les scores d'animes
-- ** Orchestration Dagster** : Pipeline automatisé avec scheduling hebdomadaire
-- ** Base PostgreSQL** : Stockage structuré avec vues SQL optimisées
+- **Pipeline d'extraction** : Récupération automatisée de 25 000+ animes depuis l'API AniList
+- **Système de recommandations** : Algorithme TF-IDF pondéré (genres, tags, synopsis)
+- **Jeu Higher or Lower** : Interface interactive Streamlit pour deviner les scores d'animes
+- **Orchestration Dagster** : Pipeline automatisé avec scheduling hebdomadaire
+- **Base PostgreSQL** : Stockage structuré avec vues SQL optimisées
 
 ## Architecture
 
