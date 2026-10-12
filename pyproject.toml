@@ -1,0 +1,29 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = ["venv", "notebooks", ".tmp_dagster_home*"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle
+    "F",   # pyflakes
+    "I",   # isort (ordre des imports)
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # longueur de ligne gérée par le formateur, pas bloquante
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Les pages Streamlit sont des scripts : le code s'exécute au niveau module,
+# après les appels de configuration de page (st.set_page_config).
+"src/app.py" = ["E402"]
+"src/pages/*.py" = ["E402"]
+# definitions.py doit amorcer sys.path avant d'importer les modules du projet.
+"orchestration/definitions.py" = ["E402"]
