@@ -1,0 +1,62 @@
+services:
+
+  # ─── Base de données PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: anime_db
+    environment:
+      POSTGRES_DB: anime_db
+      POSTGRES_USER: anime_user
+      POSTGRES_PASSWORD: anime_pass
+    ports:
+      - "5433:5432"   # 5433 sur le host pour éviter le conflit avec un PostgreSQL local
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/db/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./src/db/views.sql:/docker-entrypoint-initdb.d/02_views.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anime_user -d anime_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ─── Orchestration Dagster ──────────────────────────────────────────────────
+  dagster:
+    build: .
+    container_name: anime_dagster
+    env_file: .env
+    environment:
+      # À l'intérieur du réseau Docker, on accède à postgres via son nom de service
+      DATABASE_URL: postgresql://anime_user:anime_pass@postgres:5432/anime_db
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data         # Parquet généré par le pipeline, partagé avec Streamlit
+      - ./src:/app/src           # Hot-reload du code métier
+      - ./orchestration:/app/orchestration  # Hot-reload du pipeline
+      - dagster_home:/app/dagster_home      # Historique des runs et des schedules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ─── Application Streamlit ──────────────────────────────────────────────────
+  streamlit:
+    build: .
+    container_name: anime_streamlit
+    command: streamlit run src/app.py --server.port 8501 --server.address 0.0.0.0
+    env_file: .env
+    environment:
+      # Même override : accès à postgres via le réseau Docker
+      DATABASE_URL: postgresql://anime_user:anime_pass@postgres:5432/anime_db
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data   # Lit le parquet produit par Dagster
+      - ./src:/app/src     # Hot-reload : les modifications locales sont reflétées sans rebuild
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  dagster_home:

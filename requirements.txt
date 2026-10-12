@@ -1,8 +1,25 @@
-# Streamlit app dependencies
+# anime-data-platform — Dépendances complètes
+# Couvre l'orchestration Dagster, le pipeline ML et l'application Streamlit.
+
+# Orchestration
+dagster==1.12.1
+dagster-webserver==1.12.1
+
+# Application Streamlit
 streamlit==1.50.0
+
+# Data
 pandas==2.3.3
 pyarrow==21.0.0
+
+# Machine Learning
+scikit-learn==1.6.1
+scipy==1.13.1
+
+# Base de données
 sqlalchemy==2.0.44
 psycopg2-binary==2.9.11
+
+# Utilitaires
 python-dotenv==1.2.1
 requests==2.32.5
