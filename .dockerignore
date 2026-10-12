@@ -1,21 +1,34 @@
-# Ignorer Git
+# Git
 .git
 .gitignore
+.github
 
-# Ignorer l'environnement virtuel
+# Environnements virtuels
 venv/
+.venv/
 
-# Ignorer les caches Python
+# Caches Python
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
 
-# Ignorer les fichiers de config locaux
+# Configuration locale (les secrets passent par env_file / variables d'env)
 .env
+.env.*
+!.env.example
+.claude/
 
-# Les artefacts de données n'ont pas à être dans l'image,
-# car l'image va les RE-CRÉER elle-même.
+# Artefacts de données : l'image les régénère elle-même
 data/
 
-# Fichiers de configuration IDE
+# Non nécessaires à l'exécution de l'image
+tests/
+notebooks/
+*.md
+LICENSE
+
+# Outils et IDE
 .vscode/
 .idea/
+.devcontainer/
