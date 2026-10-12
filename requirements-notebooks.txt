@@ -1,0 +1,9 @@
+# Dépendances des notebooks d'exploration (notebooks/)
+# Non nécessaires pour faire tourner la plateforme — uniquement pour rejouer
+# les analyses. Installation : pip install -r requirements-notebooks.txt
+
+-r requirements.txt
+
+jupyterlab==4.4.10
+matplotlib==3.9.4
+seaborn==0.13.2

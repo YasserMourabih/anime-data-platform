@@ -1,21 +1,23 @@
 """
-Helpers pour notebooks Jupyter
-Fournit des fonctions de chargement de données et utilitaires d'analyse
+Helpers pour les notebooks Jupyter d'exploration.
+
+Fournit le chargement des vues PostgreSQL et quelques utilitaires d'analyse.
+Dépendances supplémentaires : pip install -r requirements-notebooks.txt
 """
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sns
 from sqlalchemy import create_engine
-from config import DB_PARAMS, logger
+
+from config import DATABASE_URL, logger
 
 # Configuration matplotlib/seaborn
 plt.style.use('seaborn-v0_8-darkgrid')
 sns.set_palette("husl")
 
 def get_engine():
-    """Créer une connexion à la base de données PostgreSQL"""
-    DB_URL = f"postgresql://{DB_PARAMS['user']}:{DB_PARAMS['password']}@{DB_PARAMS['host']}/{DB_PARAMS['dbname']}"
-    return create_engine(DB_URL)
+    """Crée un moteur SQLAlchemy vers la base configurée dans .env."""
+    return create_engine(DATABASE_URL)
 
 def load_anime_data(engine=None):
     """
@@ -77,7 +79,7 @@ def quick_audit(df, name="DataFrame"):
     print(f"AUDIT : {name}")
     print(f"{'='*60}")
     print(f"Shape: {df.shape[0]} lignes x {df.shape[1]} colonnes")
-    print(f"\n📊 Premières lignes:")
+    print("\n📊 Premières lignes:")
     print(df.head(3))
 
 def load_all_data(engine=None):
