@@ -1,50 +1,59 @@
 """
-Page Higher or Lower - Devinez si l'anime a un score plus haut ou plus bas !
-Version refactorisée avec CSS externe et fonctions modulaires.
+Jeu Higher or Lower : deviner lequel de deux animes a le meilleur score AniList.
+
+Les animes sont tirés au sort parmi les 500 titres les plus populaires lus
+depuis la vue PostgreSQL view_anime_basic.
 """
 
-import streamlit as st
-import pandas as pd
-import os
-import sqlalchemy
-from dotenv import load_dotenv
 from pathlib import Path
-import sys
 
-load_dotenv()
+import pandas as pd
+import sqlalchemy
+import streamlit as st
+from sqlalchemy.exc import SQLAlchemyError
 
-# Ajouter le dossier parent au path pour importer config
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from config import logger
+from config import DATABASE_URL, logger
 
-logger.info("🎮 Chargement de la page Higher or Lower")
+logger.info("Chargement de la page Higher or Lower")
 
 
 # ============================================================================
 # CHARGEMENT DES DONNÉES
 # ============================================================================
 
+COLONNES_JEU = ["title", "score", "cover_image"]
+
+
 @st.cache_data
 def load_game_data(top_k=500):
-    """Charge les animes populaires pour le jeu."""
-    logger.info(f"📊 Chargement des {top_k} animes les plus populaires pour le jeu")
-    db_url = f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASS')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}?sslmode=require"
-    engine = sqlalchemy.create_engine(db_url)
-    
+    """
+    Charge les animes les plus populaires depuis PostgreSQL pour le jeu.
+
+    Retourne un DataFrame vide si la base est injoignable ou non alimentée :
+    la page affiche alors un message d'aide au lieu d'une erreur technique.
+    """
+    logger.info(f"Chargement des {top_k} animes les plus populaires pour le jeu")
+
     query = f"""
     SELECT title, score, cover_image
-    FROM view_anime_basic 
-    WHERE score > 0 
-      AND score IS NOT NULL 
+    FROM view_anime_basic
+    WHERE score > 0
+      AND score IS NOT NULL
       AND popularity IS NOT NULL
       AND cover_image IS NOT NULL
     ORDER BY popularity DESC
     LIMIT {top_k};
     """
-    
-    df = pd.read_sql(query, engine)
-    df = df.drop_duplicates(subset=['title']).reset_index(drop=True)
-    logger.info(f"✅ {len(df)} animes chargés pour le jeu")
+
+    try:
+        engine = sqlalchemy.create_engine(DATABASE_URL)
+        df = pd.read_sql(query, engine)
+    except SQLAlchemyError as erreur:
+        logger.error(f"Base de données injoignable pour le jeu : {erreur}")
+        return pd.DataFrame(columns=COLONNES_JEU)
+
+    df = df.drop_duplicates(subset=["title"]).reset_index(drop=True)
+    logger.info(f"{len(df)} animes chargés pour le jeu")
     return df
 
 
@@ -403,9 +412,13 @@ def show():
     if 'df_animes' not in st.session_state:
         with st.spinner("Chargement des animes..."):
             st.session_state.df_animes = load_game_data(top_k=500)
-    
+
+    if st.session_state.df_animes.empty:
+        st.warning("Aucun anime en base de données. Lancez d'abord le pipeline Dagster sur localhost:3000.")
+        st.stop()
+
     # Initialisation du jeu
-    if 'score' not in st.session_state:
+    if 'game_over' not in st.session_state:
         init_game()
     
     # Métriques

@@ -1,22 +1,24 @@
-# src/pages/2_anime_recommender.py (Version optimisée avec Parquet)
-import streamlit as st
-import pandas as pd
-import os
-from pathlib import Path
-import sys
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-from config import logger
+"""
+Page de recommandation d'animes.
 
-# --- CONFIG ---
+Lit le fichier Parquet produit par le pipeline Dagster (local ou GitHub Releases
+selon DEPLOYMENT_MODE) et affiche les animes les plus similaires au titre choisi.
+"""
+
+from pathlib import Path
+
+import pandas as pd
+import streamlit as st
+
+from config import PARQUET_SOURCE, logger
+
 st.set_page_config(page_title="Anime Recommender", page_icon="🎯")
 
-logger.info("🎯 Chargement de la page Anime Recommender")
-
-PARQUET_URL = "https://github.com/YasserMourabih/anime-data-platform/releases/download/v1.0.0-data/recommendations.parquet"
+logger.info("Chargement de la page Anime Recommender")
 
 # --- LOAD CSS ---
-def load_css(file_name):
-    """Charge un fichier CSS externe."""
+def load_css(file_name: str) -> None:
+    """Injecte un fichier CSS dans la page Streamlit."""
     css_file = Path(__file__).parent.parent / "styles" / file_name
     with open(css_file) as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
@@ -26,11 +28,11 @@ load_css("recommender_styles.css")
 
 @st.cache_data
 def load_recommendations():
-    """Charge les recommandations depuis le fichier Parquet (ultra-rapide)."""
-    logger.info(f"📂 Chargement des recommandations depuis {PARQUET_URL}")
-    df_recos = pd.read_parquet(PARQUET_URL)
-    all_titles = sorted(df_recos['source_title'].unique())
-    logger.info(f"✅ {len(all_titles)} animes et {len(df_recos)} recommandations chargées")
+    """Charge les recommandations depuis le Parquet (local ou URL selon DEPLOYMENT_MODE)."""
+    logger.info(f"Chargement des recommandations depuis : {PARQUET_SOURCE}")
+    df_recos = pd.read_parquet(PARQUET_SOURCE)
+    all_titles = sorted(df_recos["source_title"].unique())
+    logger.info(f"{len(all_titles)} animes, {len(df_recos)} recommandations chargées")
     return df_recos, all_titles
 
 # --- HEADER ---
@@ -55,14 +57,14 @@ try:
     
     # Afficher le nombre de recommandations disponibles
     if selected_anime:
-        nb_recos = len(df_recos[df_recos['source_title'] == selected_anime])
+        nb_recos = len(df_recos[df_recos["source_title"] == selected_anime])
         st.caption(f"{nb_recos} recommandations disponibles pour cet anime")
 
     if st.button("Trouver des recommandations", type="primary", use_container_width=True):
         if selected_anime:
             logger.info(f"🔍 Recherche de recommandations pour '{selected_anime}'")
             # Filtre Pandas ultra-rapide
-            recommendations = df_recos[df_recos['source_title'] == selected_anime].sort_values('score', ascending=False)
+            recommendations = df_recos[df_recos["source_title"] == selected_anime].sort_values('score', ascending=False)
             
             if not recommendations.empty:
                 logger.info(f"✅ {len(recommendations)} recommandations trouvées pour '{selected_anime}'")
@@ -93,10 +95,10 @@ try:
             st.warning("Veuillez sélectionner un anime d'abord")
 
 except FileNotFoundError:
-    logger.error(f"❌ Fichier de recommandations introuvable : {PARQUET_URL}")
-    st.error("Fichier de recommandations introuvable. Assurez-vous d'avoir lancé le script de calcul.")
+    logger.error(f"Fichier de recommandations introuvable : {PARQUET_SOURCE}")
+    st.error("Fichier de recommandations introuvable. Lancez d'abord le pipeline Dagster.")
 except Exception as e:
-    logger.error(f"❌ Erreur lors du chargement des recommandations : {e}")
+    logger.error(f"Erreur lors du chargement des recommandations : {e}")
     st.error(f"Erreur lors du chargement des recommandations : {e}")
 
 # Sidebar avec informations
@@ -117,7 +119,6 @@ with st.sidebar:
     st.markdown('<div class="sidebar-section-title">Navigation</div>', unsafe_allow_html=True)
     st.page_link("app.py", label="Accueil")
     st.page_link("pages/2_anime_recommender.py", label="Recommender")
-    st.page_link("pages/1_higher_lower.py", label="Higher or Lower")
     
     st.markdown("---")
     
@@ -141,5 +142,5 @@ with st.sidebar:
     st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
     st.markdown('<div class="sidebar-section-title">Format</div>', unsafe_allow_html=True)
     st.markdown("**Parquet** (Snappy)")
-    st.markdown("Utra-rapide")
+    st.markdown("Ultra-rapide")
     st.markdown('</div>', unsafe_allow_html=True)
